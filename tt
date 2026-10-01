@@ -1,2 +1,3910 @@
-set "TESSDATA_PREFIX=C:\Program Files\Tesseract-OCR\tessdata"
-"C:\Program Files\Tesseract-OCR\tesseract.exe" --list-langs
+# ============================================================
+# FEDERAL BANK DOCUMENT AI
+#
+# ACCOUNT OPENING FORM
+# COMPLETE AADHAAR MASKING PIPELINE
+#
+# ============================================================
+#
+# FEATURES
+#
+# 1. Embedded Aadhaar image:
+#       RF-DETR
+#          +
+#       Tesseract
+#          +
+#       Verhoeff
+#
+#       Aadhaar:
+#           1234 5678 9012
+#
+#       becomes:
+#           XXXX XXXX 9012
+#
+#       QR:
+#           FULLY MASKED
+#
+#
+# 2. Aadhaar explicitly written in the FORM:
+#
+#       Aadhaar Number: 1234 5678 9012
+#
+#       Tesseract detects:
+#           "Aadhaar Number"
+#
+#       Then finds nearby 12-digit number.
+#
+#       IMPORTANT:
+#       Label-associated Aadhaar numbers do NOT require
+#       Verhoeff validation.
+#
+#       This is intentional because a form may contain
+#       a test/synthetic/incorrect Aadhaar number.
+#
+#
+# 3. Other 12-digit numbers:
+#
+#       Must pass Verhoeff before being considered Aadhaar.
+#
+#
+# 4. Full Aadhaar numbers are NEVER written to TXT.
+#
+# ============================================================
+
+
+# ============================================================
+# 1. IMPORTS
+# ============================================================
+
+import os
+import shutil
+import re
+import io
+import cv2
+import fitz
+import numpy as np
+import pytesseract
+import argparse
+import torch
+import subprocess
+import sys
+from concurrent.futures import ThreadPoolExecutor
+from pathlib import Path
+
+from PIL import Image
+from pytesseract import Output
+
+from rfdetr import RFDETRBase
+
+
+# Locate the Windows Tesseract executable when it is not already on PATH.
+if not os.environ.get("TESSERACT_CMD"):
+    for candidate in (
+        Path(r"C:\Program Files\Tesseract-OCR\tesseract.exe"),
+        Path(r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe"),
+    ):
+        if candidate.is_file():
+            pytesseract.pytesseract.tesseract_cmd = str(candidate)
+            break
+
+
+# ============================================================
+# 3. CONFIGURATION
+# ============================================================
+
+ROOT = Path(__file__).resolve().parent
+DEFAULT_INPUT_DIR = ROOT / "input" / "Files"
+DEFAULT_CHECKPOINT = ROOT / "checkpoint_best_total (1).pth"
+
+parser = argparse.ArgumentParser(description="Mask Aadhaar details in an account-opening PDF.")
+parser.add_argument("input_pdf", nargs="?", type=Path,
+                    help=f"Input PDF (omit to process all PDFs under {DEFAULT_INPUT_DIR})")
+parser.add_argument("--checkpoint", type=Path, default=DEFAULT_CHECKPOINT,
+                    help="RF-DETR checkpoint file")
+parser.add_argument("--output-pdf", type=Path,
+                    help="Output PDF path; batch mode uses its parent directory")
+parser.add_argument("--output-txt", type=Path,
+                    help="Output report path; batch mode uses its parent directory")
+args = parser.parse_args()
+
+INPUT_PDF = args.input_pdf.expanduser().resolve() if args.input_pdf else None
+CHECKPOINT = args.checkpoint.expanduser().resolve()
+
+if INPUT_PDF is None:
+    if not DEFAULT_INPUT_DIR.is_dir():
+        raise FileNotFoundError(f"Input directory not found: {DEFAULT_INPUT_DIR}")
+
+    input_pdfs = sorted(
+        path for path in DEFAULT_INPUT_DIR.rglob("*")
+        if path.is_file() and path.suffix.lower() == ".pdf"
+    )
+    if not input_pdfs:
+        raise FileNotFoundError(f"No PDF files found under: {DEFAULT_INPUT_DIR}")
+
+    output_pdf_root = (
+        args.output_pdf.expanduser().resolve().parent
+        if args.output_pdf else ROOT / "output"
+    )
+    output_txt_root = (
+        args.output_txt.expanduser().resolve().parent
+        if args.output_txt else ROOT / "output"
+    )
+    failed_pdfs = []
+
+    for input_pdf in input_pdfs:
+        relative_path = input_pdf.relative_to(DEFAULT_INPUT_DIR)
+        output_pdf = output_pdf_root / relative_path.parent / f"{input_pdf.stem}_masked.pdf"
+        output_txt = output_txt_root / relative_path.parent / f"{input_pdf.stem}_result.txt"
+        command = [
+            sys.executable,
+            str(Path(__file__).resolve()),
+            str(input_pdf),
+            "--checkpoint",
+            str(CHECKPOINT),
+            "--output-pdf",
+            str(output_pdf),
+            "--output-txt",
+            str(output_txt),
+        ]
+        print(f"\nProcessing {input_pdf}", flush=True)
+        if subprocess.run(command, check=False).returncode != 0:
+            failed_pdfs.append(input_pdf)
+
+    if failed_pdfs:
+        print(f"\nFailed to process {len(failed_pdfs)} PDF(s):")
+        for failed_pdf in failed_pdfs:
+            print(f"  {failed_pdf}")
+        raise SystemExit(1)
+
+    print(f"\nProcessed {len(input_pdfs)} PDF(s).")
+    raise SystemExit(0)
+
+OUTPUT_PDF = (
+    args.output_pdf.expanduser().resolve()
+    if args.output_pdf else ROOT / "output" / "aadhaar_form_masked.pdf"
+)
+OUTPUT_TXT = (
+    args.output_txt.expanduser().resolve()
+    if args.output_txt else ROOT / "output" / "aadhaar_form_result.txt"
+)
+
+RFDETR_THRESHOLD = 0.30
+RENDER_SCALE = 2.5
+
+
+# RF-DETR CLASS NAMES
+# ============================================================
+
+CLASS_NAMES = {
+
+    0: "NAME",
+
+    1: "DATE_OF_BIRTH",
+
+    2: "AADHAAR_NUMBER",
+
+    3: "GENDER",
+
+    4: "ADDRESS",
+
+    5: "QR"
+}
+
+
+# ============================================================
+# MASK MARGINS
+# ============================================================
+
+AADHAAR_MARGIN_X = 6
+AADHAAR_MARGIN_Y = 4
+
+QR_MARGIN_X = 6
+QR_MARGIN_Y = 6
+
+
+# ============================================================
+# 4. CHECKPOINT
+# ============================================================
+
+if not CHECKPOINT.is_file():
+
+    raise FileNotFoundError(
+        f"Checkpoint not found:\n{CHECKPOINT}"
+    )
+
+
+print("=" * 70)
+print("CHECKPOINT")
+print("=" * 70)
+
+print(
+    CHECKPOINT
+)
+
+
+# ============================================================
+# 5. LOAD RF-DETR
+# ============================================================
+
+print()
+
+print("=" * 70)
+print("LOADING RF-DETR")
+print("=" * 70)
+
+
+model = RFDETRBase(
+
+    pretrain_weights=CHECKPOINT,
+
+    num_classes=6,
+
+    resolution=560,
+
+    device=("cuda" if torch.cuda.is_available() else "cpu")
+)
+
+
+print(
+    "RF-DETR loaded successfully."
+)
+
+
+# ============================================================
+# 6. VERHOEFF
+# ============================================================
+
+D_TABLE = [
+
+    [0,1,2,3,4,5,6,7,8,9],
+
+    [1,2,3,4,0,6,7,8,9,5],
+
+    [2,3,4,0,1,7,8,9,5,6],
+
+    [3,4,0,1,2,8,9,5,6,7],
+
+    [4,0,1,2,3,9,5,6,7,8],
+
+    [5,9,8,7,6,0,4,3,2,1],
+
+    [6,5,9,8,7,1,0,4,3,2],
+
+    [7,6,5,9,8,2,1,0,4,3],
+
+    [8,7,6,5,9,3,2,1,0,4],
+
+    [9,8,7,6,5,4,3,2,1,0]
+]
+
+
+P_TABLE = [
+
+    [0,1,2,3,4,5,6,7,8,9],
+
+    [1,5,7,6,2,8,3,0,9,4],
+
+    [5,8,0,3,7,9,6,1,4,2],
+
+    [8,9,1,6,0,4,3,5,2,7],
+
+    [9,4,5,3,1,2,6,8,7,0],
+
+    [4,2,8,6,5,7,3,9,0,1],
+
+    [2,7,9,3,8,0,6,4,1,5],
+
+    [7,0,4,6,9,1,3,2,5,8]
+]
+
+
+def verhoeff_validate(number):
+
+    number = re.sub(
+        r"\D",
+        "",
+        str(number)
+    )
+
+    if len(number) != 12:
+
+        return False
+
+    checksum = 0
+
+    for i, digit in enumerate(
+        map(
+            int,
+            number[::-1]
+        )
+    ):
+
+        checksum = D_TABLE[
+            checksum
+        ][
+            P_TABLE[
+                i % 8
+            ][
+                digit
+            ]
+        ]
+
+    return checksum == 0
+
+
+def run_tesseract_batch(worker, jobs):
+    previous_thread_limit = os.environ.get("OMP_THREAD_LIMIT")
+    os.environ["OMP_THREAD_LIMIT"] = "1"
+    try:
+        with ThreadPoolExecutor(max_workers=min(6, len(jobs))) as executor:
+            return list(executor.map(worker, jobs))
+    finally:
+        if previous_thread_limit is None:
+            os.environ.pop("OMP_THREAD_LIMIT", None)
+        else:
+            os.environ["OMP_THREAD_LIMIT"] = previous_thread_limit
+
+
+def run_image_to_data_batch(jobs):
+    return run_tesseract_batch(
+        lambda job: pytesseract.image_to_data(
+            job[0],
+            config=job[1],
+            output_type=Output.DICT
+        ),
+        jobs
+    )
+
+
+def run_image_to_string_batch(jobs):
+    return run_tesseract_batch(
+        lambda job: pytesseract.image_to_string(
+            job[0],
+            config=job[1]
+        ),
+        jobs
+    )
+
+
+# ============================================================
+# 7. BOX HELPERS
+# ============================================================
+
+def clip_box(
+    box,
+    width,
+    height
+):
+
+    x1, y1, x2, y2 = box
+
+    x1 = max(
+        0,
+        min(
+            int(x1),
+            width - 1
+        )
+    )
+
+    y1 = max(
+        0,
+        min(
+            int(y1),
+            height - 1
+        )
+    )
+
+    x2 = max(
+        0,
+        min(
+            int(x2),
+            width
+        )
+    )
+
+    y2 = max(
+        0,
+        min(
+            int(y2),
+            height
+        )
+    )
+
+    return (
+        x1,
+        y1,
+        x2,
+        y2
+    )
+
+
+def expand_box(
+    box,
+    width,
+    height,
+    margin_x,
+    margin_y
+):
+
+    x1, y1, x2, y2 = box
+
+    return clip_box(
+
+        (
+            x1 - margin_x,
+            y1 - margin_y,
+            x2 + margin_x,
+            y2 + margin_y
+        ),
+
+        width,
+        height
+    )
+
+
+def box_iou(
+    a,
+    b
+):
+
+    ax1, ay1, ax2, ay2 = a
+
+    bx1, by1, bx2, by2 = b
+
+    ix1 = max(
+        ax1,
+        bx1
+    )
+
+    iy1 = max(
+        ay1,
+        by1
+    )
+
+    ix2 = min(
+        ax2,
+        bx2
+    )
+
+    iy2 = min(
+        ay2,
+        by2
+    )
+
+    if (
+        ix2 <= ix1
+        or
+        iy2 <= iy1
+    ):
+
+        return 0.0
+
+    intersection = (
+
+        (ix2 - ix1)
+        *
+        (iy2 - iy1)
+    )
+
+    area_a = (
+
+        max(
+            0,
+            ax2 - ax1
+        )
+        *
+        max(
+            0,
+            ay2 - ay1
+        )
+    )
+
+    area_b = (
+
+        max(
+            0,
+            bx2 - bx1
+        )
+        *
+        max(
+            0,
+            by2 - by1
+        )
+    )
+
+    union = (
+
+        area_a
+        +
+        area_b
+        -
+        intersection
+    )
+
+    if union <= 0:
+
+        return 0.0
+
+    return (
+        intersection / union
+    )
+
+
+# ============================================================
+# 8. GENERIC TESSERACT AADHAAR DETECTION
+#
+# Used mainly for:
+#
+# Embedded Aadhaar images
+#
+# Requires:
+#
+# 12 digits
+# +
+# Verhoeff valid
+#
+# ============================================================
+
+def find_aadhaar_candidates(
+    image
+):
+
+    height, width = (
+        image.shape[:2]
+    )
+
+    versions = []
+
+
+    # --------------------------------------------------------
+    # ORIGINAL
+    # --------------------------------------------------------
+
+    versions.append(
+        (
+            "original",
+            image,
+            1.0
+        )
+    )
+
+
+    # --------------------------------------------------------
+    # 3X UPSCALE
+    # --------------------------------------------------------
+
+    upscaled = cv2.resize(
+
+        image,
+
+        None,
+
+        fx=3,
+
+        fy=3,
+
+        interpolation=cv2.INTER_CUBIC
+    )
+
+    versions.append(
+        (
+            "upscaled",
+            upscaled,
+            3.0
+        )
+    )
+
+
+    # --------------------------------------------------------
+    # GRAY
+    # --------------------------------------------------------
+
+    gray = cv2.cvtColor(
+
+        upscaled,
+
+        cv2.COLOR_RGB2GRAY
+    )
+
+    versions.append(
+        (
+            "gray",
+            gray,
+            3.0
+        )
+    )
+
+
+    # --------------------------------------------------------
+    # ADAPTIVE
+    # --------------------------------------------------------
+
+    adaptive = cv2.adaptiveThreshold(
+
+        gray,
+
+        255,
+
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+
+        cv2.THRESH_BINARY,
+
+        31,
+
+        11
+    )
+
+    versions.append(
+        (
+            "adaptive",
+            adaptive,
+            3.0
+        )
+    )
+
+
+    # --------------------------------------------------------
+    # OTSU
+    # --------------------------------------------------------
+
+    _, otsu = cv2.threshold(
+
+        gray,
+
+        0,
+
+        255,
+
+        cv2.THRESH_BINARY
+        +
+        cv2.THRESH_OTSU
+    )
+
+    versions.append(
+        (
+            "otsu",
+            otsu,
+            3.0
+        )
+    )
+
+
+    candidates = []
+
+
+    # ========================================================
+    # OCR
+    # ========================================================
+
+    ocr_jobs = [
+        (
+            version_name,
+            processed,
+            scale,
+            psm,
+            f"--psm {psm} -c tessedit_char_whitelist=0123456789"
+        )
+        for version_name, processed, scale in versions
+        for psm in (6, 11, 12)
+    ]
+    ocr_results = run_image_to_data_batch([
+        (processed, config)
+        for _, processed, _, _, config in ocr_jobs
+    ])
+    for (version_name, processed, scale, psm, _), data in zip(
+        ocr_jobs,
+        ocr_results
+    ):
+
+
+            tokens = []
+
+
+            # =================================================
+            # OCR TOKENS
+            # =================================================
+
+            for i in range(
+                len(data["text"])
+            ):
+
+                raw = str(
+                    data["text"][i]
+                ).strip()
+
+
+                if not raw:
+
+                    continue
+
+
+                digits = re.sub(
+                    r"\D",
+                    "",
+                    raw
+                )
+
+
+                if not digits:
+
+                    continue
+
+
+                try:
+
+                    confidence = float(
+                        data["conf"][i]
+                    )
+
+                except:
+
+                    confidence = -1
+
+
+                if confidence < 0:
+
+                    continue
+
+
+                x = int(
+                    data["left"][i]
+                )
+
+                y = int(
+                    data["top"][i]
+                )
+
+                tw = int(
+                    data["width"][i]
+                )
+
+                th = int(
+                    data["height"][i]
+                )
+
+
+                if (
+                    tw <= 0
+                    or
+                    th <= 0
+                ):
+
+                    continue
+
+
+                ox1 = (
+                    x / scale
+                )
+
+                oy1 = (
+                    y / scale
+                )
+
+                ox2 = (
+                    x + tw
+                ) / scale
+
+                oy2 = (
+                    y + th
+                ) / scale
+
+
+                tokens.append(
+
+                    {
+                        "digits": digits,
+
+                        "confidence":
+                            confidence,
+
+                        "x1": ox1,
+
+                        "y1": oy1,
+
+                        "x2": ox2,
+
+                        "y2": oy2,
+
+                        "cx":
+                            (ox1 + ox2) / 2,
+
+                        "cy":
+                            (oy1 + oy2) / 2
+                    }
+                )
+
+
+            tokens.sort(
+
+                key=lambda t: (
+
+                    round(
+                        t["cy"] / 25
+                    ),
+
+                    t["x1"]
+                )
+            )
+
+
+            # =================================================
+            # SEARCH 12 DIGITS
+            # =================================================
+
+            for start in range(
+                len(tokens)
+            ):
+
+                combined = ""
+
+                selected = []
+
+                previous = None
+
+
+                for j in range(
+
+                    start,
+
+                    min(
+                        start + 4,
+                        len(tokens)
+                    )
+                ):
+
+                    token = tokens[j]
+
+
+                    if previous is not None:
+
+                        y_distance = abs(
+
+                            token["cy"]
+
+                            -
+
+                            previous["cy"]
+                        )
+
+
+                        x_gap = (
+
+                            token["x1"]
+
+                            -
+
+                            previous["x2"]
+                        )
+
+
+                        if y_distance > 40:
+
+                            break
+
+
+                        if x_gap > 220:
+
+                            break
+
+
+                    combined += (
+                        token["digits"]
+                    )
+
+
+                    selected.append(
+                        token
+                    )
+
+
+                    previous = token
+
+
+                    if len(combined) > 12:
+
+                        break
+
+
+                    if len(combined) == 12:
+
+
+                        # -------------------------------------
+                        # VERHOEFF
+                        # -------------------------------------
+
+                        if not verhoeff_validate(
+                            combined
+                        ):
+
+                            break
+
+
+                        x1 = min(
+                            t["x1"]
+                            for t in selected
+                        )
+
+                        y1 = min(
+                            t["y1"]
+                            for t in selected
+                        )
+
+                        x2 = max(
+                            t["x2"]
+                            for t in selected
+                        )
+
+                        y2 = max(
+                            t["y2"]
+                            for t in selected
+                        )
+
+
+                        bw = (
+                            x2 - x1
+                        )
+
+                        bh = (
+                            y2 - y1
+                        )
+
+
+                        if (
+                            bw <= 0
+                            or
+                            bh <= 0
+                        ):
+
+                            break
+
+
+                        if (
+                            bw / bh < 1.3
+                        ):
+
+                            break
+
+
+                        candidates.append(
+
+                            {
+
+                                "number":
+                                    combined,
+
+                                "box":
+                                    (
+                                        x1,
+                                        y1,
+                                        x2,
+                                        y2
+                                    ),
+
+                                "confidence":
+                                    min(
+
+                                        t[
+                                            "confidence"
+                                        ]
+
+                                        for t
+                                        in selected
+                                    ),
+
+                                "method":
+                                    version_name,
+
+                                "psm":
+                                    psm
+                            }
+                        )
+
+
+                        break
+
+
+    # ========================================================
+    # DEDUPLICATE
+    # ========================================================
+
+    unique = []
+
+
+    for candidate in candidates:
+
+        duplicate = False
+
+
+        for existing in unique:
+
+            if (
+
+                candidate[
+                    "number"
+                ]
+
+                ==
+
+                existing[
+                    "number"
+                ]
+            ):
+
+                if (
+
+                    box_iou(
+
+                        candidate[
+                            "box"
+                        ],
+
+                        existing[
+                            "box"
+                        ]
+                    )
+
+                    > 0.15
+                ):
+
+                    duplicate = True
+
+                    break
+
+
+        if not duplicate:
+
+            unique.append(
+                candidate
+            )
+
+
+    unique.sort(
+
+        key=lambda x:
+            x["confidence"],
+
+        reverse=True
+    )
+
+
+    return unique
+
+
+# ============================================================
+# 9. FORM-LEVEL LABEL-AWARE AADHAAR DETECTION
+#
+# THIS IS THE IMPORTANT NEW PART.
+#
+# It searches the WHOLE PAGE for:
+#
+#   Aadhaar Number
+#   Aadhaar No
+#   Aadhaar No.
+#   Aadhar Number
+#   Aadhar No
+#   UID Number
+#
+# Then searches near that label for 12 digits.
+#
+# VERHOEFF IS NOT REQUIRED FOR THIS LABEL-ASSOCIATED CASE.
+#
+# ============================================================
+
+def find_labeled_form_aadhaar_candidates(
+    page_image
+):
+
+    height, width = (
+        page_image.shape[:2]
+    )
+
+
+    print()
+    print(
+        "Searching form for Aadhaar labels..."
+    )
+
+
+    # ========================================================
+    # CREATE OCR VERSIONS
+    # ========================================================
+
+    versions = []
+
+
+    versions.append(
+        (
+            "original",
+            page_image,
+            1.0
+        )
+    )
+
+
+    upscaled = cv2.resize(
+
+        page_image,
+
+        None,
+
+        fx=2,
+
+        fy=2,
+
+        interpolation=cv2.INTER_CUBIC
+    )
+
+
+    versions.append(
+        (
+            "upscaled",
+            upscaled,
+            2.0
+        )
+    )
+
+
+    # ========================================================
+    # LABEL OCR
+    #
+    # Do NOT use digit whitelist here.
+    # We need words such as Aadhaar.
+    # ========================================================
+
+    candidates = []
+
+
+    ocr_jobs = [
+        (version_name, processed, scale, psm, f"--psm {psm}")
+        for version_name, processed, scale in versions
+        for psm in (6, 11, 12)
+    ]
+    ocr_results = run_image_to_data_batch([
+        (processed, config)
+        for _, processed, _, _, config in ocr_jobs
+    ])
+    for (version_name, processed, scale, psm, _), data in zip(
+        ocr_jobs,
+        ocr_results
+    ):
+
+
+            words = []
+
+
+            for i in range(
+                len(data["text"])
+            ):
+
+
+                raw = str(
+                    data["text"][i]
+                ).strip()
+
+
+                if not raw:
+
+                    continue
+
+
+                try:
+
+                    confidence = float(
+                        data["conf"][i]
+                    )
+
+                except:
+
+                    confidence = -1
+
+
+                if confidence < 0:
+
+                    continue
+
+
+                x = int(
+                    data["left"][i]
+                )
+
+                y = int(
+                    data["top"][i]
+                )
+
+                tw = int(
+                    data["width"][i]
+                )
+
+                th = int(
+                    data["height"][i]
+                )
+
+
+                if (
+                    tw <= 0
+                    or
+                    th <= 0
+                ):
+
+                    continue
+
+
+                words.append(
+
+                    {
+
+                        "text":
+                            raw,
+
+                        "lower":
+                            raw.lower(),
+
+                        "confidence":
+                            confidence,
+
+                        "x1":
+                            x / scale,
+
+                        "y1":
+                            y / scale,
+
+                        "x2":
+                            (x + tw) / scale,
+
+                        "y2":
+                            (y + th) / scale,
+
+                        "cx":
+                            (x + tw / 2) / scale,
+
+                        "cy":
+                            (y + th / 2) / scale,
+
+                        "line_num":
+                            data[
+                                "line_num"
+                            ][i]
+                    }
+                )
+
+
+            # =================================================
+            # FIND AADHAAR LABELS
+            # =================================================
+
+            label_indices = []
+
+
+            for i, word in enumerate(
+                words
+            ):
+
+
+                normalized = re.sub(
+
+                    r"[^a-z]",
+
+                    "",
+
+                    word["lower"]
+                )
+
+
+                # ---------------------------------------------
+                # Direct Aadhaar/Aadhar label
+                # ---------------------------------------------
+
+                if (
+
+                    "aadhaar"
+                    in
+                    normalized
+
+                    or
+
+                    "aadhar"
+                    in
+                    normalized
+                ):
+
+                    label_indices.append(
+                        i
+                    )
+
+                    continue
+
+
+                # ---------------------------------------------
+                # UID label
+                # ---------------------------------------------
+
+                if normalized == "uid":
+
+                    label_indices.append(
+                        i
+                    )
+
+
+            if not label_indices:
+
+                continue
+
+
+            # =================================================
+            # OCR DIGITS SEPARATELY
+            # =================================================
+
+            digit_data = pytesseract.image_to_data(
+
+                processed,
+
+                config=(
+                    f"--psm {psm} "
+                    "-c tessedit_char_whitelist=0123456789"
+                ),
+
+                output_type=Output.DICT
+            )
+
+
+            digit_tokens = []
+
+
+            for i in range(
+                len(
+                    digit_data["text"]
+                )
+            ):
+
+
+                raw = str(
+                    digit_data["text"][i]
+                ).strip()
+
+
+                if not raw:
+
+                    continue
+
+
+                digits = re.sub(
+                    r"\D",
+                    "",
+                    raw
+                )
+
+
+                if not digits:
+
+                    continue
+
+
+                try:
+
+                    confidence = float(
+                        digit_data["conf"][i]
+                    )
+
+                except:
+
+                    confidence = -1
+
+
+                if confidence < 0:
+
+                    continue
+
+
+                x = int(
+                    digit_data["left"][i]
+                )
+
+                y = int(
+                    digit_data["top"][i]
+                )
+
+                tw = int(
+                    digit_data["width"][i]
+                )
+
+                th = int(
+                    digit_data["height"][i]
+                )
+
+
+                if (
+                    tw <= 0
+                    or
+                    th <= 0
+                ):
+
+                    continue
+
+
+                digit_tokens.append(
+
+                    {
+
+                        "digits":
+                            digits,
+
+                        "confidence":
+                            confidence,
+
+                        "x1":
+                            x / scale,
+
+                        "y1":
+                            y / scale,
+
+                        "x2":
+                            (x + tw) / scale,
+
+                        "y2":
+                            (y + th) / scale,
+
+                        "cx":
+                            (x + tw / 2) / scale,
+
+                        "cy":
+                            (y + th / 2) / scale
+                    }
+                )
+
+
+            # =================================================
+            # MATCH NUMBERS NEAR AADHAAR LABEL
+            # =================================================
+
+            for label_index in (
+                label_indices
+            ):
+
+
+                label = words[
+                    label_index
+                ]
+
+
+                # ---------------------------------------------
+                # Candidate digit tokens
+                #
+                # Allow same line or the immediately following
+                # line.
+                # ---------------------------------------------
+
+                nearby = []
+
+
+                for token in digit_tokens:
+
+
+                    vertical_distance = abs(
+
+                        token["cy"]
+
+                        -
+
+                        label["cy"]
+                    )
+
+
+                    # Number should be reasonably close
+                    # vertically.
+                    if vertical_distance > 110:
+
+                        continue
+
+
+                    # Avoid numbers far to the left.
+                    #
+                    # Usually Aadhaar number is after
+                    # "Aadhaar Number:".
+                    #
+                    # But allow below-label layout too.
+                    if (
+
+                        token["cy"]
+                        <
+                        label["cy"] + 20
+
+                        and
+
+                        token["cx"]
+                        <
+                        label["cx"] - 20
+                    ):
+
+                        continue
+
+
+                    nearby.append(
+                        token
+                    )
+
+
+                # ---------------------------------------------
+                # Sort spatially
+                # ---------------------------------------------
+
+                nearby.sort(
+
+                    key=lambda t: (
+
+                        round(
+                            t["cy"] / 30
+                        ),
+
+                        t["x1"]
+                    )
+                )
+
+
+                # =================================================
+                # SEARCH EXACT 12 DIGITS
+                #
+                # NO VERHOEFF HERE
+                # because this is explicitly near Aadhaar label.
+                # =================================================
+
+                for start in range(
+                    len(nearby)
+                ):
+
+
+                    combined = ""
+
+                    selected = []
+
+                    previous = None
+
+
+                    for j in range(
+
+                        start,
+
+                        min(
+
+                            start + 4,
+
+                            len(nearby)
+                        )
+                    ):
+
+
+                        token = nearby[
+                            j
+                        ]
+
+
+                        if previous is not None:
+
+
+                            y_distance = abs(
+
+                                token["cy"]
+
+                                -
+
+                                previous["cy"]
+                            )
+
+
+                            x_gap = (
+
+                                token["x1"]
+
+                                -
+
+                                previous["x2"]
+                            )
+
+
+                            if (
+                                y_distance
+                                >
+                                45
+                            ):
+
+                                break
+
+
+                            if (
+                                x_gap
+                                >
+                                300
+                            ):
+
+                                break
+
+
+                        combined += (
+                            token[
+                                "digits"
+                            ]
+                        )
+
+
+                        selected.append(
+                            token
+                        )
+
+
+                        previous = token
+
+
+                        if len(combined) > 12:
+
+                            break
+
+
+                        if len(combined) == 12:
+
+
+                            x1 = min(
+
+                                t["x1"]
+
+                                for t
+                                in selected
+                            )
+
+
+                            y1 = min(
+
+                                t["y1"]
+
+                                for t
+                                in selected
+                            )
+
+
+                            x2 = max(
+
+                                t["x2"]
+
+                                for t
+                                in selected
+                            )
+
+
+                            y2 = max(
+
+                                t["y2"]
+
+                                for t
+                                in selected
+                            )
+
+
+                            candidates.append(
+
+                                {
+
+                                    "number":
+                                        combined,
+
+                                    "box":
+                                        (
+                                            x1,
+                                            y1,
+                                            x2,
+                                            y2
+                                        ),
+
+                                    "confidence":
+                                        min(
+
+                                            t[
+                                                "confidence"
+                                            ]
+
+                                            for t
+                                            in selected
+                                        ),
+
+                                    "method":
+                                        "LABEL_AADHAAR",
+
+                                    "label":
+                                        label[
+                                            "text"
+                                        ]
+                                }
+                            )
+
+
+                            break
+
+
+    # ========================================================
+    # DEDUPLICATE
+    # ========================================================
+
+    unique = []
+
+
+    for candidate in candidates:
+
+
+        duplicate = False
+
+
+        for existing in unique:
+
+
+            if (
+
+                box_iou(
+
+                    candidate[
+                        "box"
+                    ],
+
+                    existing[
+                        "box"
+                    ]
+                )
+
+                >
+
+                0.30
+            ):
+
+                duplicate = True
+
+                break
+
+
+        if not duplicate:
+
+            unique.append(
+                candidate
+            )
+
+
+    unique.sort(
+
+        key=lambda x:
+            x["confidence"],
+
+        reverse=True
+    )
+
+
+    print(
+        "Label-associated Aadhaar candidates:",
+        len(unique)
+    )
+
+
+    return unique
+
+
+# ============================================================
+# 10. DRAW MASK
+#
+# Original:
+#
+#   1234 5678 9012
+#
+# Output:
+#
+#   XXXX XXXX 9012
+# ============================================================
+
+def draw_masked_aadhaar(
+
+    canvas,
+
+    box,
+
+    number
+):
+
+    height, width = (
+        canvas.shape[:2]
+    )
+
+
+    x1, y1, x2, y2 = clip_box(
+
+        box,
+
+        width,
+
+        height
+    )
+
+
+    # ========================================================
+    # WHITE OUT ORIGINAL
+    # ========================================================
+
+    cv2.rectangle(
+
+        canvas,
+
+        (x1, y1),
+
+        (x2, y2),
+
+        (255, 255, 255),
+
+        -1
+    )
+
+
+    # ========================================================
+    # ONLY LAST FOUR
+    # ========================================================
+
+    visible_text = (
+
+        "XXXX XXXX "
+
+        +
+
+        number[-4:]
+    )
+
+
+    font = (
+        cv2.FONT_HERSHEY_SIMPLEX
+    )
+
+
+    box_width = max(
+
+        1,
+
+        x2 - x1
+    )
+
+
+    box_height = max(
+
+        1,
+
+        y2 - y1
+    )
+
+
+    font_scale = max(
+
+        0.30,
+
+        min(
+
+            1.20,
+
+            box_height / 38.0
+        )
+    )
+
+
+    thickness = max(
+
+        1,
+
+        int(
+            font_scale * 2
+        )
+    )
+
+
+    # ========================================================
+    # FIT TEXT
+    # ========================================================
+
+    while True:
+
+
+        (
+            text_width,
+            text_height
+        ), baseline = cv2.getTextSize(
+
+            visible_text,
+
+            font,
+
+            font_scale,
+
+            thickness
+        )
+
+
+        if (
+
+            text_width
+            <=
+            box_width - 4
+
+            or
+
+            font_scale <= 0.25
+        ):
+
+            break
+
+
+        font_scale -= 0.05
+
+
+        thickness = max(
+
+            1,
+
+            int(
+                font_scale * 2
+            )
+        )
+
+
+    # ========================================================
+    # CENTER
+    # ========================================================
+
+    text_x = (
+
+        x1
+
+        +
+
+        max(
+
+            2,
+
+            (
+                box_width
+                -
+                text_width
+            )
+            //
+            2
+        )
+    )
+
+
+    text_y = (
+
+        y1
+
+        +
+
+        (
+            box_height
+            +
+            text_height
+        )
+        //
+        2
+    )
+
+
+    text_x = max(
+
+        0,
+
+        min(
+
+            text_x,
+
+            width
+            -
+            text_width
+            -
+            1
+        )
+    )
+
+
+    text_y = max(
+
+        text_height,
+
+        min(
+
+            text_y,
+
+            height - 1
+        )
+    )
+
+
+    # ========================================================
+    # DRAW
+    # ========================================================
+
+    cv2.putText(
+
+        canvas,
+
+        visible_text,
+
+        (
+            text_x,
+            text_y
+        ),
+
+        font,
+
+        font_scale,
+
+        (0, 0, 0),
+
+        thickness,
+
+        cv2.LINE_AA
+    )
+
+
+    return visible_text
+
+
+# ============================================================
+# 11. PROCESS EMBEDDED AADHAAR
+# ============================================================
+
+def process_embedded_aadhaar(
+
+    embedded_image
+):
+
+
+    image = (
+        embedded_image.copy()
+    )
+
+
+    height, width = (
+        image.shape[:2]
+    )
+
+
+    # ========================================================
+    # RF-DETR
+    # ========================================================
+
+    pil = Image.fromarray(
+        image
+    )
+
+
+    detections = model.predict(
+
+        pil,
+
+        threshold=
+            RFDETR_THRESHOLD
+    )
+
+
+    print()
+
+    print(
+        "RF-DETR on embedded image:"
+    )
+
+
+    aadhaar_boxes = []
+
+    qr_boxes = []
+
+    detected_classes = []
+
+
+    for (
+
+        class_id,
+
+        box,
+
+        confidence
+
+    ) in zip(
+
+        detections.class_id,
+
+        detections.xyxy,
+
+        detections.confidence
+    ):
+
+
+        class_id = int(
+            class_id
+        )
+
+
+        class_name = (
+            CLASS_NAMES.get(
+
+                class_id,
+
+                str(class_id)
+            )
+        )
+
+
+        box = clip_box(
+
+            box,
+
+            width,
+
+            height
+        )
+
+
+        detected_classes.append(
+            class_name
+        )
+
+
+        print(
+
+            f"  {class_name} "
+
+            f"confidence="
+
+            f"{float(confidence):.3f} "
+
+            f"box={box}"
+        )
+
+
+        if (
+            class_name
+            ==
+            "AADHAAR_NUMBER"
+        ):
+
+            aadhaar_boxes.append(
+                box
+            )
+
+
+        elif (
+            class_name
+            ==
+            "QR"
+        ):
+
+            qr_boxes.append(
+                box
+            )
+
+
+    # ========================================================
+    # TESSERACT + VERHOEFF
+    # ========================================================
+
+    candidates = (
+        find_aadhaar_candidates(
+            image
+        )
+    )
+
+
+    print(
+
+        "  OCR valid Aadhaar candidates:",
+
+        len(candidates)
+    )
+
+
+    masked = (
+        image.copy()
+    )
+
+
+    masked_aadhaar_count = 0
+
+    masked_qr_count = 0
+
+
+    # ========================================================
+    # QR
+    # ========================================================
+
+    for box in qr_boxes:
+
+
+        mask_box = expand_box(
+
+            box,
+
+            width,
+
+            height,
+
+            QR_MARGIN_X,
+
+            QR_MARGIN_Y
+        )
+
+
+        x1, y1, x2, y2 = (
+            mask_box
+        )
+
+
+        cv2.rectangle(
+
+            masked,
+
+            (x1, y1),
+
+            (x2, y2),
+
+            (0, 0, 0),
+
+            -1
+        )
+
+
+        masked_qr_count += 1
+
+
+        print(
+            "  QR MASKED:",
+            mask_box
+        )
+
+
+    # ========================================================
+    # MATCH RF-DETR WITH TESSERACT
+    # ========================================================
+
+    used_candidates = set()
+
+
+    for detector_box in (
+        aadhaar_boxes
+    ):
+
+
+        best_candidate_index = None
+
+        best_iou = 0.0
+
+
+        for idx, candidate in enumerate(
+            candidates
+        ):
+
+
+            if idx in used_candidates:
+
+                continue
+
+
+            overlap = box_iou(
+
+                candidate[
+                    "box"
+                ],
+
+                detector_box
+            )
+
+
+            if overlap > best_iou:
+
+                best_iou = overlap
+
+                best_candidate_index = (
+                    idx
+                )
+
+
+        # ====================================================
+        # TESSERACT VALIDATED
+        # ====================================================
+
+        if (
+
+            best_candidate_index
+            is not None
+
+            and
+
+            best_iou > 0.05
+        ):
+
+
+            candidate = candidates[
+                best_candidate_index
+            ]
+
+
+            number = candidate[
+                "number"
+            ]
+
+
+            mask_box = expand_box(
+
+                candidate[
+                    "box"
+                ],
+
+                width,
+
+                height,
+
+                AADHAAR_MARGIN_X,
+
+                AADHAAR_MARGIN_Y
+            )
+
+
+            visible = draw_masked_aadhaar(
+
+                masked,
+
+                mask_box,
+
+                number
+            )
+
+
+            used_candidates.add(
+                best_candidate_index
+            )
+
+
+            masked_aadhaar_count += 1
+
+
+            print()
+
+            print(
+                "  EMBEDDED AADHAAR MASKED"
+            )
+
+
+            print(
+                "  Visible:",
+                visible
+            )
+
+
+        else:
+
+
+            # =================================================
+            # SAFETY FALLBACK
+            # =================================================
+
+            mask_box = expand_box(
+
+                detector_box,
+
+                width,
+
+                height,
+
+                AADHAAR_MARGIN_X,
+
+                AADHAAR_MARGIN_Y
+            )
+
+
+            x1, y1, x2, y2 = (
+                mask_box
+            )
+
+
+            cv2.rectangle(
+
+                masked,
+
+                (x1, y1),
+
+                (x2, y2),
+
+                (0, 0, 0),
+
+                -1
+            )
+
+
+            masked_aadhaar_count += 1
+
+
+            print()
+
+            print(
+                "  RF-DETR Aadhaar detected."
+            )
+
+            print(
+                "  Tesseract validation failed."
+            )
+
+            print(
+                "  SAFETY: fully masked."
+            )
+
+
+    # ========================================================
+    # OCR-ONLY FALLBACK
+    # ========================================================
+
+    for idx, candidate in enumerate(
+        candidates
+    ):
+
+
+        if idx in used_candidates:
+
+            continue
+
+
+        overlaps_detector = False
+
+
+        for detector_box in (
+            aadhaar_boxes
+        ):
+
+
+            if (
+
+                box_iou(
+
+                    candidate[
+                        "box"
+                    ],
+
+                    detector_box
+                )
+
+                >
+
+                0.05
+            ):
+
+                overlaps_detector = True
+
+                break
+
+
+        if overlaps_detector:
+
+            continue
+
+
+        number = candidate[
+            "number"
+        ]
+
+
+        mask_box = expand_box(
+
+            candidate[
+                "box"
+            ],
+
+            width,
+
+            height,
+
+            AADHAAR_MARGIN_X,
+
+            AADHAAR_MARGIN_Y
+        )
+
+
+        visible = draw_masked_aadhaar(
+
+            masked,
+
+            mask_box,
+
+            number
+        )
+
+
+        masked_aadhaar_count += 1
+
+
+        print()
+
+        print(
+            "  TESSERACT FALLBACK"
+        )
+
+
+        print(
+            "  Visible:",
+            visible
+        )
+
+
+    return (
+
+        masked,
+
+        masked_aadhaar_count,
+
+        masked_qr_count,
+
+        detected_classes,
+
+        candidates
+    )
+
+
+def read_detected_aadhaar_number(image, box):
+    height, width = image.shape[:2]
+    x1, y1, x2, y2 = box
+    padding_x = max(4, int((x2 - x1) * 0.04))
+    padding_y = max(4, int((y2 - y1) * 0.35))
+    crop = image[
+        max(0, y1 - padding_y):min(height, y2 + padding_y),
+        max(0, x1 - padding_x):min(width, x2 + padding_x)
+    ]
+    if crop.size == 0:
+        return None
+
+    gray = cv2.cvtColor(crop, cv2.COLOR_RGB2GRAY)
+    enlarged = cv2.resize(
+        gray,
+        None,
+        fx=2,
+        fy=2,
+        interpolation=cv2.INTER_CUBIC
+    )
+    versions = [
+        enlarged,
+        cv2.createCLAHE(clipLimit=3, tileGridSize=(8, 8)).apply(enlarged),
+        cv2.threshold(
+            enlarged,
+            0,
+            255,
+            cv2.THRESH_BINARY + cv2.THRESH_OTSU
+        )[1]
+    ]
+
+    jobs = [
+        (
+            processed,
+            f"--psm {psm} -c tessedit_char_whitelist=0123456789"
+        )
+        for processed in versions
+        for psm in (7, 8, 13)
+    ]
+    readings = {}
+    for text in run_image_to_string_batch(jobs):
+        digits = re.sub(r"\D", "", text)
+        if len(digits) == 12:
+            readings[digits] = readings.get(digits, 0) + 1
+
+    if not readings:
+        return None
+
+    number, votes = max(readings.items(), key=lambda item: item[1])
+    if votes < 2 or sum(votes == count for count in readings.values()) > 1:
+        return None
+    return number
+
+
+def process_full_page_scan(page_image):
+    height, width = page_image.shape[:2]
+    tile_width = min(width, max(560, int(width * 0.36)))
+    tile_height = min(height, max(560, int(height * 0.65)))
+
+    def tile_starts(length, tile_size, stride):
+        stride = max(1, stride)
+        starts = list(range(0, max(1, length - tile_size + 1), stride))
+        final_start = max(0, length - tile_size)
+        if not starts or starts[-1] != final_start:
+            starts.append(final_start)
+        return starts
+
+    detections = []
+    y_starts = tile_starts(height, tile_height, int(height * 0.27))
+    x_starts = tile_starts(width, tile_width, int(width * 0.34))
+    for top in y_starts:
+        for left in x_starts:
+            tile = page_image[top:top + tile_height, left:left + tile_width]
+            predictions = model.predict(
+                Image.fromarray(tile),
+                threshold=RFDETR_THRESHOLD
+            )
+            for class_id, box, confidence in zip(
+                predictions.class_id,
+                predictions.xyxy,
+                predictions.confidence
+            ):
+                class_id = int(class_id)
+                if class_id not in (2, 5):
+                    continue
+                x1, y1, x2, y2 = box
+                page_box = clip_box(
+                    (left + x1, top + y1, left + x2, top + y2),
+                    width,
+                    height
+                )
+                if page_box[2] <= page_box[0] or page_box[3] <= page_box[1]:
+                    continue
+                detections.append((class_id, page_box, float(confidence)))
+
+    detections.sort(key=lambda item: item[2], reverse=True)
+    unique_detections = []
+    for detection in detections:
+        class_id, box, _ = detection
+        if any(
+            class_id == existing_class
+            and box_iou(box, existing_box) > 0.40
+            for existing_class, existing_box, _ in unique_detections
+        ):
+            continue
+        unique_detections.append(detection)
+
+    masked_boxes = []
+    aadhaar_count = 0
+    qr_count = 0
+    for class_id, box, confidence in unique_detections:
+        mask_box = expand_box(
+            box,
+            width,
+            height,
+            QR_MARGIN_X if class_id == 5 else AADHAAR_MARGIN_X,
+            QR_MARGIN_Y if class_id == 5 else AADHAAR_MARGIN_Y
+        )
+        x1, y1, x2, y2 = mask_box
+
+        if class_id == 5:
+            cv2.rectangle(page_image, (x1, y1), (x2, y2), (0, 0, 0), -1)
+            qr_count += 1
+            print(f"FULL-PAGE QR masked confidence={confidence:.3f} box={mask_box}")
+        else:
+            number = read_detected_aadhaar_number(page_image, box)
+            if number:
+                visible = draw_masked_aadhaar(
+                    page_image,
+                    mask_box,
+                    number
+                )
+                print(
+                    f"FULL-PAGE AADHAAR OCR masked confidence={confidence:.3f}; "
+                    f"visible={visible} box={mask_box}"
+                )
+            else:
+                cv2.rectangle(page_image, (x1, y1), (x2, y2), (0, 0, 0), -1)
+                print(
+                    f"FULL-PAGE AADHAAR detector fallback masked "
+                    f"confidence={confidence:.3f} box={mask_box}"
+                )
+            aadhaar_count += 1
+
+        masked_boxes.append(mask_box)
+
+    return masked_boxes, aadhaar_count, qr_count
+
+
+# ============================================================
+# 12. OPEN INPUT PDF
+# ============================================================
+
+if not INPUT_PDF.is_file():
+    raise FileNotFoundError(f"Input PDF not found: {INPUT_PDF}")
+OUTPUT_PDF.parent.mkdir(parents=True, exist_ok=True)
+OUTPUT_TXT.parent.mkdir(parents=True, exist_ok=True)
+
+configured_tesseract = os.environ.get("TESSERACT_CMD")
+if configured_tesseract:
+    pytesseract.pytesseract.tesseract_cmd = configured_tesseract
+
+if (not shutil.which(pytesseract.pytesseract.tesseract_cmd)
+        and not Path(pytesseract.pytesseract.tesseract_cmd).is_file()):
+    raise FileNotFoundError(
+        "Tesseract OCR was not found. Install Tesseract or set "
+        "TESSERACT_CMD to its executable path."
+    )
+
+print("Input PDF:", INPUT_PDF)
+
+
+# 13. OPEN PDF
+# ============================================================
+
+doc = fitz.open(INPUT_PDF)
+
+
+input_page_count = len(
+    doc
+)
+
+
+print(
+    "PDF pages:",
+    input_page_count
+)
+
+
+# ============================================================
+# 14. RENDER PAGES
+# ============================================================
+
+page_images = []
+
+page_sizes = []
+
+
+for page_index in range(
+    input_page_count
+):
+
+
+    page = doc[
+        page_index
+    ]
+
+
+    pix = page.get_pixmap(
+
+        matrix=fitz.Matrix(
+
+            RENDER_SCALE,
+
+            RENDER_SCALE
+        ),
+
+        alpha=False
+    )
+
+
+    img = np.frombuffer(
+
+        pix.samples,
+
+        dtype=np.uint8
+    ).reshape(
+
+        pix.height,
+
+        pix.width,
+
+        pix.n
+    )
+
+
+    if pix.n == 4:
+
+        img = cv2.cvtColor(
+
+            img,
+
+            cv2.COLOR_RGBA2RGB
+        )
+
+
+    elif pix.n == 1:
+
+        img = cv2.cvtColor(
+
+            img,
+
+            cv2.COLOR_GRAY2RGB
+        )
+
+
+    page_images.append(
+        img
+    )
+
+
+    page_sizes.append(
+
+        (
+
+            page.rect.width,
+
+            page.rect.height
+        )
+    )
+
+
+    print(
+
+        f"Page {page_index + 1}: "
+
+        f"{img.shape[1]} x "
+
+        f"{img.shape[0]}"
+    )
+
+
+# ============================================================
+# 15. COUNTERS
+# ============================================================
+
+masked_pages = []
+
+total_embedded_images = 0
+
+total_embedded_aadhaar_images = 0
+
+total_embedded_aadhaar_masks = 0
+
+total_page_detector_aadhaar_masks = 0
+
+total_qr_masks = 0
+
+total_labeled_form_masks = 0
+
+total_generic_verhoeff_form_masks = 0
+
+
+# ============================================================
+# 16. PROCESS EVERY PAGE
+# ============================================================
+
+for page_index in range(
+    input_page_count
+):
+
+
+    print()
+
+    print("=" * 70)
+
+    print(
+        f"PAGE {page_index + 1}"
+    )
+
+    print("=" * 70)
+
+
+    page = doc[
+        page_index
+    ]
+
+
+    page_image = (
+        page_images[
+            page_index
+        ].copy()
+    )
+
+
+    page_height, page_width = (
+        page_image.shape[:2]
+    )
+
+
+    # ========================================================
+    # PART A
+    # EMBEDDED PDF IMAGES
+    # ========================================================
+
+    image_infos = (
+        page.get_images(
+            full=True
+        )
+    )
+
+
+    print()
+
+    print(
+        "Embedded PDF images:",
+        len(image_infos)
+    )
+
+
+    processed_rects = []
+
+    full_page_scan = False
+
+
+    for image_info in image_infos:
+
+
+        xref = image_info[0]
+
+
+        try:
+
+            rects = (
+                page.get_image_rects(
+                    xref
+                )
+            )
+
+
+        except Exception as e:
+
+            print(
+                "Could not get image rect:",
+                e
+            )
+
+            continue
+
+
+        for rect in rects:
+
+
+            # =================================================
+            # PDF -> PIXELS
+            # =================================================
+
+            px1 = int(
+                rect.x0
+                *
+                RENDER_SCALE
+            )
+
+            py1 = int(
+                rect.y0
+                *
+                RENDER_SCALE
+            )
+
+            px2 = int(
+                rect.x1
+                *
+                RENDER_SCALE
+            )
+
+            py2 = int(
+                rect.y1
+                *
+                RENDER_SCALE
+            )
+
+
+            # =================================================
+            # CLIP
+            # =================================================
+
+            px1 = max(
+                0,
+                min(
+                    px1,
+                    page_width - 1
+                )
+            )
+
+            py1 = max(
+                0,
+                min(
+                    py1,
+                    page_height - 1
+                )
+            )
+
+            px2 = max(
+                0,
+                min(
+                    px2,
+                    page_width
+                )
+            )
+
+            py2 = max(
+                0,
+                min(
+                    py2,
+                    page_height
+                )
+            )
+
+
+            iw = (
+                px2 - px1
+            )
+
+            ih = (
+                py2 - py1
+            )
+
+
+            # =================================================
+            # IGNORE SMALL IMAGES
+            # =================================================
+
+            if (
+
+                iw
+                <
+                page_width * 0.08
+
+                or
+
+                ih
+                <
+                page_height * 0.04
+            ):
+
+                continue
+
+
+            # =================================================
+            # IGNORE FULL PAGE BACKGROUND
+            # =================================================
+
+            if (
+
+                iw
+                >
+                page_width * 0.95
+
+                and
+
+                ih
+                >
+                page_height * 0.90
+            ):
+
+                full_page_scan = True
+
+                continue
+
+
+            rect_key = (
+
+                px1,
+                py1,
+                px2,
+                py2
+            )
+
+
+            # =================================================
+            # DUPLICATE CHECK
+            # =================================================
+
+            duplicate_rect = False
+
+
+            for existing_rect in (
+                processed_rects
+            ):
+
+
+                if (
+
+                    box_iou(
+
+                        rect_key,
+
+                        existing_rect
+                    )
+
+                    >
+                    0.90
+                ):
+
+                    duplicate_rect = True
+
+                    break
+
+
+            if duplicate_rect:
+
+                continue
+
+
+            processed_rects.append(
+                rect_key
+            )
+
+
+            total_embedded_images += 1
+
+
+            # =================================================
+            # CROP
+            # =================================================
+
+            embedded = (
+
+                page_image[
+
+                    py1:py2,
+
+                    px1:px2
+                ]
+
+                .copy()
+            )
+
+
+            if embedded.size == 0:
+
+                continue
+
+
+            print()
+
+            print(
+                "Embedded image:",
+                rect_key
+            )
+
+
+            # =================================================
+            # RF-DETR + TESSERACT
+            # =================================================
+
+            (
+
+                masked_embedded,
+
+                aadhaar_count,
+
+                qr_count,
+
+                detected_classes,
+
+                candidates
+
+            ) = process_embedded_aadhaar(
+
+                embedded
+            )
+
+
+            # =================================================
+            # IDENTIFY AADHAAR IMAGE
+            # =================================================
+
+            is_aadhaar = (
+
+                aadhaar_count > 0
+
+                or
+
+                qr_count > 0
+
+                or
+
+                "AADHAAR_NUMBER"
+                in
+                detected_classes
+
+                or
+
+                "QR"
+                in
+                detected_classes
+
+                or
+
+                len(candidates) > 0
+            )
+
+
+            if not is_aadhaar:
+
+                print(
+                    "Not identified as Aadhaar."
+                )
+
+                continue
+
+
+            total_embedded_aadhaar_images += 1
+
+
+            # =================================================
+            # PUT MASKED EMBEDDED IMAGE BACK
+            # =================================================
+
+            page_image[
+
+                py1:py2,
+
+                px1:px2
+
+            ] = masked_embedded
+
+
+            total_embedded_aadhaar_masks += (
+                aadhaar_count
+            )
+
+            total_qr_masks += (
+                qr_count
+            )
+
+
+            print(
+                "Embedded Aadhaar processed."
+            )
+
+
+    page_detector_boxes = []
+    if full_page_scan:
+        print()
+        print("FULL-PAGE SCAN RF-DETR")
+        (
+            page_detector_boxes,
+            detector_aadhaar_count,
+            detector_qr_count
+        ) = process_full_page_scan(page_image)
+        total_page_detector_aadhaar_masks += detector_aadhaar_count
+        total_qr_masks += detector_qr_count
+
+
+    # ========================================================
+    # PART B
+    # FORM-LEVEL LABEL-AWARE AADHAAR
+    # ========================================================
+
+    print()
+
+    print("-" * 70)
+
+    print(
+        "FORM-LEVEL LABEL-AWARE OCR"
+    )
+
+    print("-" * 70)
+
+
+    labeled_candidates = (
+        find_labeled_form_aadhaar_candidates(
+            page_image
+        )
+    )
+
+
+    labeled_boxes = page_detector_boxes.copy()
+
+
+    for candidate in (
+        labeled_candidates
+    ):
+
+
+        box = candidate[
+            "box"
+        ]
+
+
+        # ====================================================
+        # CHECK DUPLICATES
+        # ====================================================
+
+        duplicate = False
+
+
+        for existing_box in (
+            labeled_boxes
+        ):
+
+
+            if (
+
+                box_iou(
+
+                    box,
+
+                    existing_box
+                )
+
+                >
+                0.50
+            ):
+
+                duplicate = True
+
+                break
+
+
+        if duplicate:
+
+            continue
+
+
+        mask_box = expand_box(
+
+            box,
+
+            page_width,
+
+            page_height,
+
+            AADHAAR_MARGIN_X,
+
+            AADHAAR_MARGIN_Y
+        )
+
+
+        # ====================================================
+        # MASK
+        # ====================================================
+
+        visible = draw_masked_aadhaar(
+
+            page_image,
+
+            mask_box,
+
+            candidate[
+                "number"
+            ]
+        )
+
+
+        labeled_boxes.append(
+            mask_box
+        )
+
+
+        total_labeled_form_masks += 1
+
+
+        print()
+
+        print(
+            "FORM LABEL-AADHAAR MASKED"
+        )
+
+        print(
+            "Visible:",
+            visible
+        )
+
+        print(
+            "Detection method:",
+            candidate[
+                "method"
+            ]
+        )
+
+
+    # ========================================================
+    # PART C
+    # GENERIC FORM-LEVEL VERHOEFF SCAN
+    #
+    # This catches Aadhaar numbers that are not explicitly
+    # next to an Aadhaar label.
+    #
+    # These MUST pass Verhoeff.
+    # ========================================================
+
+    print()
+
+    print("-" * 70)
+
+    print(
+        "GENERIC FORM-LEVEL VERHOEFF SCAN"
+    )
+
+    print("-" * 70)
+
+
+    generic_candidates = (
+        find_aadhaar_candidates(
+            page_image
+        )
+    )
+
+
+    generic_boxes = []
+
+
+    for candidate in (
+        generic_candidates
+    ):
+
+
+        box = candidate[
+            "box"
+        ]
+
+
+        # ====================================================
+        # DON'T MASK IF ALREADY MASKED
+        # ====================================================
+
+        already_masked = False
+
+
+        for existing_box in (
+            labeled_boxes
+        ):
+
+
+            if (
+
+                box_iou(
+
+                    box,
+
+                    existing_box
+                )
+
+                >
+                0.40
+            ):
+
+                already_masked = True
+
+                break
+
+
+        if already_masked:
+
+            continue
+
+
+        for existing_box in (
+            generic_boxes
+        ):
+
+
+            if (
+
+                box_iou(
+
+                    box,
+
+                    existing_box
+                )
+
+                >
+                0.40
+            ):
+
+                already_masked = True
+
+                break
+
+
+        if already_masked:
+
+            continue
+
+
+        # ====================================================
+        # MASK
+        # ====================================================
+
+        mask_box = expand_box(
+
+            box,
+
+            page_width,
+
+            page_height,
+
+            AADHAAR_MARGIN_X,
+
+            AADHAAR_MARGIN_Y
+        )
+
+
+        visible = draw_masked_aadhaar(
+
+            page_image,
+
+            mask_box,
+
+            candidate[
+                "number"
+            ]
+        )
+
+
+        generic_boxes.append(
+            mask_box
+        )
+
+
+        total_generic_verhoeff_form_masks += 1
+
+
+        print()
+
+        print(
+            "FORM VERHOEFF-AADHAAR MASKED"
+        )
+
+        print(
+            "Visible:",
+            visible
+        )
+
+
+    # ========================================================
+    # SAVE PAGE
+    # ========================================================
+
+    masked_pages.append(
+        page_image
+    )
+
+
+    print()
+
+    print(
+        f"Page {page_index + 1} complete."
+    )
+
+
+# ============================================================
+# 17. PAGE COUNT CHECK
+# ============================================================
+
+print()
+
+print("=" * 70)
+
+print(
+    "PAGE COUNT CHECK"
+)
+
+print("=" * 70)
+
+
+print(
+    "Input:",
+    input_page_count
+)
+
+
+print(
+    "Output:",
+    len(masked_pages)
+)
+
+
+if (
+    len(masked_pages)
+    !=
+    input_page_count
+):
+
+    raise RuntimeError(
+        "Page count mismatch."
+    )
+
+
+# ============================================================
+# 18. CREATE OUTPUT PDF
+# ============================================================
+
+print()
+
+print("=" * 70)
+
+print(
+    "CREATING MASKED PDF"
+)
+
+print("=" * 70)
+
+
+output_doc = fitz.open()
+
+
+for page_index, (
+
+    masked,
+
+    page_size
+
+) in enumerate(
+
+    zip(
+
+        masked_pages,
+
+        page_sizes
+    )
+):
+
+
+    pdf_width, pdf_height = (
+        page_size
+    )
+
+
+    new_page = (
+        output_doc.new_page(
+
+            width=pdf_width,
+
+            height=pdf_height
+        )
+    )
+
+
+    success, encoded = cv2.imencode(
+
+        ".png",
+
+        cv2.cvtColor(
+
+            masked,
+
+            cv2.COLOR_RGB2BGR
+        )
+    )
+
+
+    if not success:
+
+        raise RuntimeError(
+
+            f"Failed to encode page "
+            f"{page_index + 1}"
+        )
+
+
+    new_page.insert_image(
+
+        new_page.rect,
+
+        stream=
+            encoded.tobytes()
+    )
+
+
+output_doc.save(
+
+    OUTPUT_PDF,
+
+    garbage=4,
+
+    deflate=True
+)
+
+
+output_doc.close()
+
+
+# ============================================================
+# 19. CREATE TXT REPORT
+#
+# NEVER WRITE FULL AADHAAR NUMBER.
+# ============================================================
+
+with open(
+
+    OUTPUT_TXT,
+
+    "w",
+
+    encoding="utf-8"
+) as f:
+
+
+    f.write(
+        "FEDERAL BANK - AADHAAR MASKING REPORT\n"
+    )
+
+
+    f.write(
+        "=" * 60
+        +
+        "\n\n"
+    )
+
+
+    f.write(
+        f"PDF pages: "
+        f"{input_page_count}\n"
+    )
+
+
+    f.write(
+        f"Embedded images examined: "
+        f"{total_embedded_images}\n"
+    )
+
+
+    f.write(
+        f"Embedded Aadhaar images: "
+        f"{total_embedded_aadhaar_images}\n"
+    )
+
+
+    f.write(
+        f"Embedded Aadhaar masks: "
+        f"{total_embedded_aadhaar_masks}\n"
+    )
+
+
+    f.write(
+        f"Full-page RF-DETR Aadhaar masks: "
+        f"{total_page_detector_aadhaar_masks}\n"
+    )
+
+
+    f.write(
+        f"QR masks: "
+        f"{total_qr_masks}\n"
+    )
+
+
+    f.write(
+        f"Form label-based Aadhaar masks: "
+        f"{total_labeled_form_masks}\n"
+    )
+
+
+    f.write(
+        f"Generic Verhoeff Aadhaar masks: "
+        f"{total_generic_verhoeff_form_masks}\n"
+    )
+
+
+    f.write(
+        "\n"
+    )
+
+
+    f.write(
+        "Aadhaar output format: "
+        "XXXX XXXX LAST4\n"
+    )
+
+
+    f.write(
+        "Only the last four digits are retained.\n"
+    )
+
+
+    f.write(
+        "Label-associated Aadhaar numbers are "
+        "detected using Tesseract OCR and "
+        "Aadhaar-label context.\n"
+    )
+
+
+    f.write(
+        "Unlabelled Aadhaar candidates require "
+        "Verhoeff validation.\n"
+    )
+
+
+# ============================================================
+# 20. VERIFY OUTPUT
+# ============================================================
+
+check_doc = fitz.open(
+    OUTPUT_PDF
+)
+
+
+output_page_count = len(
+    check_doc
+)
+
+
+check_doc.close()
+
+
+if (
+    output_page_count
+    !=
+    input_page_count
+):
+
+    raise RuntimeError(
+
+        f"Output page mismatch: "
+
+        f"{input_page_count} -> "
+
+        f"{output_page_count}"
+    )
+
+
+# ============================================================
+# 21. FINAL RESULT
+# ============================================================
+
+print()
+
+print("=" * 70)
+
+print(
+    "FINAL RESULT"
+)
+
+print("=" * 70)
+
+
+print()
+
+print(
+    "Input pages:",
+    input_page_count
+)
+
+
+print(
+    "Output pages:",
+    output_page_count
+)
+
+
+print()
+
+print(
+    "Embedded images examined:",
+    total_embedded_images
+)
+
+
+print(
+    "Embedded Aadhaar images:",
+    total_embedded_aadhaar_images
+)
+
+
+print(
+    "Embedded Aadhaar masks:",
+    total_embedded_aadhaar_masks
+)
+
+
+print(
+    "Full-page RF-DETR Aadhaar masks:",
+    total_page_detector_aadhaar_masks
+)
+
+
+print(
+    "QR masks:",
+    total_qr_masks
+)
+
+
+print(
+    "Form label-based Aadhaar masks:",
+    total_labeled_form_masks
+)
+
+
+print(
+    "Generic Verhoeff Aadhaar masks:",
+    total_generic_verhoeff_form_masks
+)
+
+
+print()
+
+print(
+    "Aadhaar output:"
+)
+
+print(
+    "XXXX XXXX LAST4"
+)
+
+
+print()
+
+print(
+    "Masked PDF:",
+    OUTPUT_PDF
+)
+
+
+print(
+    "Report:",
+    OUTPUT_TXT
+)
+
+
+# ============================================================
+print()
+print("DONE.")
+
+
+
