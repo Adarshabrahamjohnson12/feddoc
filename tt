@@ -102,9 +102,9 @@ parser.add_argument("input_pdf", nargs="?", type=Path,
 parser.add_argument("--checkpoint", type=Path, default=DEFAULT_CHECKPOINT,
                     help="RF-DETR checkpoint file")
 parser.add_argument("--output-pdf", type=Path,
-                    help="Output PDF path; batch mode uses its parent directory")
+                    help="Output PDF path, or output directory for batch mode")
 parser.add_argument("--output-txt", type=Path,
-                    help="Output report path; batch mode uses its parent directory")
+                    help="Output report path, or output directory for batch mode")
 args = parser.parse_args()
 
 INPUT_PDF = args.input_pdf.expanduser().resolve() if args.input_pdf else None
@@ -3905,6 +3905,3 @@ print(
 # ============================================================
 print()
 print("DONE.")
-
-
-
