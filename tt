@@ -1,7 +1,21 @@
 cd /d E:\Adarsh\Masking_project
-git clone --depth 1 --filter=blob:none --sparse https://github.com/tesseract-ocr/tessdata.git tessdata-git
-git -C tessdata-git sparse-checkout set eng.traineddata
-mkdir tessdata
-copy tessdata-git\eng.traineddata tessdata\
-set "TESSDATA_PREFIX=E:\Adarsh\Masking_project\tessdata"
-tesseract --list-langs
+
+E:\Adarsh\Masking_project>git clone --depth 1 --filter=blob:none --sparse https://github.com/tesseract-ocr/tessdata.git tessdata-git
+Cloning into 'tessdata-git'...
+fatal: unable to access 'https://github.com/tesseract-ocr/tessdata.git/': Could not resolve host: github.com
+
+E:\Adarsh\Masking_project>git -C tessdata-git sparse-checkout set eng.traineddata
+fatal: error reading 'E:/Adarsh/Masking_project/tessdata-git/.git'
+
+E:\Adarsh\Masking_project> mkdir tessdata
+
+E:\Adarsh\Masking_project>copy tessdata-git\eng.traineddata tessdata\
+The system cannot find the file specified.
+
+E:\Adarsh\Masking_project>set "TESSDATA_PREFIX=E:\Adarsh\Masking_project\tessdata"
+
+E:\Adarsh\Masking_project>tesseract --list-langs
+'tesseract' is not recognized as an internal or external command,
+operable program or batch file.
+
+E:\Adarsh\Masking_project>
