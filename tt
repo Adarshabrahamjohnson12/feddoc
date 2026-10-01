@@ -1,1 +1,81 @@
-https://github.com/tesseract-ocr/tessdata/blob/main/eng.traineddata
+
+Embedded image: (90, 90, 1396, 270)
+[2026-10-01 17:10:29] [WARNING] rf-detr - Model is not optimized for inference. Latency may be higher than expected. For full GPU throughput (e.g. ~8x on T4 via FP16 Tensor Cores), call model.inference(dtype=torch.float16).
+
+RF-DETR on embedded image:
+  ADDRESS confidence=0.906 box=(16, 52, 690, 122)
+Traceback (most recent call last):
+  File "E:\Adarsh\Masking_project\main.py", line 3091, in <module>
+    ) = process_embedded_aadhaar(
+        ~~~~~~~~~~~~~~~~~~~~~~~~^
+    
+    
+        embedded
+        ^^^^^^^^
+    )
+    ^
+  File "E:\Adarsh\Masking_project\main.py", line 2125, in process_embedded_aadhaar
+    find_aadhaar_candidates(
+    ~~~~~~~~~~~~~~~~~~~~~~~^
+        image
+        ^^^^^
+    )
+    ^
+  File "E:\Adarsh\Masking_project\main.py", line 630, in find_aadhaar_candidates
+    ocr_results = run_image_to_data_batch([
+        (processed, config)
+        for _, processed, _, _, config in ocr_jobs
+    ])
+  File "E:\Adarsh\Masking_project\main.py", line 289, in run_image_to_data_batch
+    return run_tesseract_batch(
+        lambda job: pytesseract.image_to_data(
+    ...<4 lines>...
+        jobs
+    )
+  File "E:\Adarsh\Masking_project\main.py", line 280, in run_tesseract_batch
+    return list(executor.map(worker, jobs))
+  File "C:\Program Files\Python314\Lib\concurrent\futures\_base.py", line 639, in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ~~~~~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\concurrent\futures\_base.py", line 311, in _result_or_cancel
+    return fut.result(timeout)
+           ~~~~~~~~~~^^^^^^^^^
+  File "C:\Program Files\Python314\Lib\concurrent\futures\_base.py", line 450, in result
+    return self.__get_result()
+           ~~~~~~~~~~~~~~~~~^^
+  File "C:\Program Files\Python314\Lib\concurrent\futures\_base.py", line 395, in __get_result
+    raise self._exception
+  File "C:\Program Files\Python314\Lib\concurrent\futures\thread.py", line 86, in run
+    result = ctx.run(self.task)
+  File "C:\Program Files\Python314\Lib\concurrent\futures\thread.py", line 73, in run
+    return fn(*args, **kwargs)
+  File "E:\Adarsh\Masking_project\main.py", line 290, in <lambda>
+    lambda job: pytesseract.image_to_data(
+                ~~~~~~~~~~~~~~~~~~~~~~~~~^
+        job[0],
+        ^^^^^^^
+        config=job[1],
+        ^^^^^^^^^^^^^^
+        output_type=Output.DICT
+        ^^^^^^^^^^^^^^^^^^^^^^^
+    ),
+    ^
+  File "C:\Users\ARAVIND7_FEDSERV\AppData\Roaming\Python\Python314\site-packages\pytesseract\pytesseract.py", line 596, in image_to_data
+    return {
+           ~
+    ...<6 lines>...
+        Output.STRING: lambda: run_and_get_output(*args),
+        ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    }[output_type]()
+    ~~~~~~~~~~~~~~^^
+  File "C:\Users\ARAVIND7_FEDSERV\AppData\Roaming\Python\Python314\site-packages\pytesseract\pytesseract.py", line 602, in <lambda>
+    Output.DICT: lambda: file_to_dict(run_and_get_output(*args), '\t', -1),
+                                      ~~~~~~~~~~~~~~~~~~^^^^^^^
+  File "C:\Users\ARAVIND7_FEDSERV\AppData\Roaming\Python\Python314\site-packages\pytesseract\pytesseract.py", line 352, in run_and_get_output
+    run_tesseract(**kwargs)
+    ~~~~~~~~~~~~~^^^^^^^^^^
+  File "C:\Users\ARAVIND7_FEDSERV\AppData\Roaming\Python\Python314\site-packages\pytesseract\pytesseract.py", line 284, in run_tesseract
+    raise TesseractError(proc.returncode, get_errors(error_string))
+pytesseract.pytesseract.TesseractError: (1, 'Error opening data file E:\\Adarsh\\Masking_project\\tessdata/eng.traineddata Please make sure the TESSDATA_PREFIX environment variable is set to your "tessdata" directory. Failed loading language \'eng\' Tesseract couldn\'t load any languages! Could not initialize tesseract.')
+
+E:\Adarsh\Masking_project>
