@@ -1,0 +1,4 @@
+cd /d E:\Adarsh\Masking_project
+where tesseract
+set "TESSERACT_CMD=C:\Program Files\Tesseract-OCR\tesseract.exe"
+".venv\Scripts\python.exe" main.py "input\yourfile.pdf"
