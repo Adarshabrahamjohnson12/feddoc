@@ -26,6 +26,7 @@ The QR code is blacked out completely.
 Full numbers are never written to the report.
 
 Run:
+    python main.py                                  (process every PDF in input/Files)
     python main.py input/fedtest.pdf
     python main.py input/fedtest.pdf --debug          (print model detections)
     python main.py input/fedtest.pdf --threshold 0.15 (model misses cards)
@@ -54,7 +55,8 @@ TARGET_CLASS_IDS = {2, 5}
 # arguments
 # ------------------------------------------------------------------
 ap = argparse.ArgumentParser(description="Mask Aadhaar numbers + QR in a PDF (last 4 digits stay visible).")
-ap.add_argument("input_pdf", nargs="?", type=Path, default=ROOT / "input" / "fedtest.pdf")
+ap.add_argument("input_pdf", nargs="?", type=Path, default=None,
+                help="process this PDF only; omit to process all PDFs in input/Files")
 ap.add_argument("--checkpoint", type=Path, default=ROOT / "checkpoint_best_total (1).pth")
 ap.add_argument("--no-model", action="store_true", help="do not load RF-DETR (OCR only)")
 ap.add_argument("--threshold", type=float, default=0.30, help="RF-DETR confidence threshold")
@@ -63,12 +65,10 @@ ap.add_argument("--debug", action="store_true", help="print every RF-DETR detect
 ap.add_argument("--mask-any-12-digit", action="store_true",
                 help="mask every 12-digit number (typed or handwritten), even if no check passes")
 ap.add_argument("--output-pdf", type=Path, default=ROOT / "output" / "aadhaar_form_masked.pdf")
-ap.add_argument("--output-txt", type=Path, default=ROOT / "output" / "aadhaar_form_result.txt")
 args = ap.parse_args()
 
-INPUT_PDF = args.input_pdf.expanduser().resolve()
+INPUT_PDF = args.input_pdf.expanduser().resolve() if args.input_pdf else None
 OUTPUT_PDF = args.output_pdf.expanduser().resolve()
-OUTPUT_TXT = args.output_txt.expanduser().resolve()
 
 # ------------------------------------------------------------------
 # RF-DETR
@@ -647,77 +647,81 @@ def process(img, cov, is_region):
 # ------------------------------------------------------------------
 # main
 # ------------------------------------------------------------------
-if not INPUT_PDF.is_file():
-    raise SystemExit(f"Input PDF not found: {INPUT_PDF}")
-OUTPUT_PDF.parent.mkdir(parents=True, exist_ok=True)
-OUTPUT_TXT.parent.mkdir(parents=True, exist_ok=True)
+if INPUT_PDF is None:
+    input_pdfs = sorted((ROOT / "input" / "Files").glob("*.pdf"),
+                        key=lambda path: path.name.casefold())
+    if not input_pdfs:
+        raise SystemExit(f"No PDF files found in {ROOT / 'input' / 'Files'}")
+else:
+    if not INPUT_PDF.is_file():
+        raise SystemExit(f"Input PDF not found: {INPUT_PDF}")
+    input_pdfs = [INPUT_PDF]
 
-doc = fitz.open(INPUT_PDF)
-out_doc = fitz.open()
-report = []
+for input_pdf in input_pdfs:
+    INPUT_PDF = input_pdf
+    if args.input_pdf is None:
+        OUTPUT_PDF = ROOT / "output" / f"{INPUT_PDF.stem}_masked.pdf"
+    OUTPUT_PDF.parent.mkdir(parents=True, exist_ok=True)
+    for key in STATS:
+        STATS[key] = 0
 
-for pi, page in enumerate(doc):
-    before = dict(STATS)
-    pix = page.get_pixmap(matrix=fitz.Matrix(RENDER_SCALE, RENDER_SCALE), alpha=False)
-    img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
-    if pix.n == 4:
-        img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
-    elif pix.n == 1:
-        img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-    img = img.copy()
-    H, W = img.shape[:2]
-    cov = np.zeros((H, W), np.uint8)
+    doc = fitz.open(INPUT_PDF)
+    out_doc = fitz.open()
 
-    # embedded PDF images (full-page scan backgrounds are left to the page pass)
-    regions = []
-    for info in page.get_images(full=True):
-        try:
-            rects = page.get_image_rects(info[0])
-        except Exception:
-            continue
-        for r in rects:
-            b = clip((r.x0 * RENDER_SCALE, r.y0 * RENDER_SCALE,
-                      r.x1 * RENDER_SCALE, r.y1 * RENDER_SCALE), W, H)
-            w, h = b[2] - b[0], b[3] - b[1]
-            if w < W * 0.08 or h < H * 0.04:
+    for pi, page in enumerate(doc):
+        before = dict(STATS)
+        pix = page.get_pixmap(matrix=fitz.Matrix(RENDER_SCALE, RENDER_SCALE), alpha=False)
+        img = np.frombuffer(pix.samples, dtype=np.uint8).reshape(pix.height, pix.width, pix.n)
+        if pix.n == 4:
+            img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
+        elif pix.n == 1:
+            img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
+        img = img.copy()
+        H, W = img.shape[:2]
+        cov = np.zeros((H, W), np.uint8)
+
+        # Embedded images (full-page scan backgrounds are handled by the page pass).
+        regions = []
+        for info in page.get_images(full=True):
+            try:
+                rects = page.get_image_rects(info[0])
+            except Exception:
                 continue
-            if w > W * 0.95 and h > H * 0.90:
-                continue
-            if not any(iou(b, o) > 0.9 for o in regions):
-                regions.append(b)
+            for r in rects:
+                b = clip((r.x0 * RENDER_SCALE, r.y0 * RENDER_SCALE,
+                          r.x1 * RENDER_SCALE, r.y1 * RENDER_SCALE), W, H)
+                w, h = b[2] - b[0], b[3] - b[1]
+                if w < W * 0.08 or h < H * 0.04:
+                    continue
+                if w > W * 0.95 and h > H * 0.90:
+                    continue
+                if not any(iou(b, o) > 0.9 for o in regions):
+                    regions.append(b)
 
-    print(f"\nPAGE {pi + 1}/{len(doc)}  embedded images={len(regions)}")
-    for x1, y1, x2, y2 in regions:
-        if x2 - x1 > 0 and y2 - y1 > 0:
-            res, rcov = process(img[y1:y2, x1:x2], cov[y1:y2, x1:x2], is_region=True)
-            img[y1:y2, x1:x2] = res
-            cov[y1:y2, x1:x2] = rcov
+        print(f"\nPAGE {pi + 1}/{len(doc)}  embedded images={len(regions)}")
+        for x1, y1, x2, y2 in regions:
+            if x2 - x1 > 0 and y2 - y1 > 0:
+                res, rcov = process(img[y1:y2, x1:x2], cov[y1:y2, x1:x2], is_region=True)
+                img[y1:y2, x1:x2] = res
+                cov[y1:y2, x1:x2] = rcov
 
-    img, cov = process(img, cov, is_region=False)          # whole page
+        img, cov = process(img, cov, is_region=False)
 
-    delta = {k: STATS[k] - before[k] for k in STATS}
-    report.append((pi + 1, delta))
-    print("  masked:", delta)
+        delta = {k: STATS[k] - before[k] for k in STATS}
+        print("  masked:", delta)
 
-    new_page = out_doc.new_page(width=page.rect.width, height=page.rect.height)
-    ok, enc = cv2.imencode(".png", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
-    if not ok:
-        raise RuntimeError(f"Failed to encode page {pi + 1}")
-    new_page.insert_image(new_page.rect, stream=enc.tobytes())
+        new_page = out_doc.new_page(width=page.rect.width, height=page.rect.height)
+        ok, enc = cv2.imencode(".png", cv2.cvtColor(img, cv2.COLOR_RGB2BGR))
+        if not ok:
+            raise RuntimeError(f"Failed to encode page {pi + 1}")
+        new_page.insert_image(new_page.rect, stream=enc.tobytes())
 
-if len(out_doc) != len(doc):
-    raise RuntimeError("Page count mismatch")
-out_doc.save(OUTPUT_PDF, garbage=4, deflate=True)
+    if len(out_doc) != len(doc):
+        raise RuntimeError("Page count mismatch")
+    out_doc.save(OUTPUT_PDF, garbage=4, deflate=True)
 
-with open(OUTPUT_TXT, "w", encoding="utf-8") as f:
-    f.write("FEDERAL BANK - AADHAAR MASKING REPORT\n" + "=" * 60 + "\n\n")
-    f.write(f"Input PDF: {INPUT_PDF}\nPages: {len(doc)}\n\n")
-    for n, d in report:
-        f.write(f"Page {n}: typed={d['typed']}  handwritten={d['handwritten']}  "
-                f"card_number={d['card_number']}  qr={d['qr']}\n")
-    f.write(f"\nTOTAL: {STATS}\n")
-    f.write("Output format: XXXX XXXX LAST4. Full numbers are never written here.\n")
+    doc.close()
+    out_doc.close()
+    print("\nMasked PDF:", OUTPUT_PDF)
 
-print("\nMasked PDF:", OUTPUT_PDF)
-print("Report:    ", OUTPUT_TXT)
 print(f"Total elapsed: {time.perf_counter() - START:.1f} s")
