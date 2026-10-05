@@ -1,5 +1,85 @@
 .venv313\Scripts\python.exe -m pip install "paddlepaddle==3.3.1"
+Collecting paddlepaddle==3.3.1
+  Downloading paddlepaddle-3.3.1-cp313-cp313-win_amd64.whl.metadata (8.8 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting httpx (from paddlepaddle==3.3.1)
+  Using cached httpx-0.28.1-py3-none-any.whl.metadata (7.1 kB)
+Collecting numpy>=1.21 (from paddlepaddle==3.3.1)
+  Using cached numpy-2.5.3-cp313-cp313-win_amd64.whl.metadata (6.6 kB)
+Collecting protobuf>=3.20.2 (from paddlepaddle==3.3.1)
+  Downloading protobuf-7.36.2-cp310-abi3-win_amd64.whl.metadata (595 bytes)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting Pillow (from paddlepaddle==3.3.1)
+  Downloading pillow-12.3.0-cp313-cp313-win_amd64.whl.metadata (9.3 kB)
+Collecting opt-einsum==3.3.0 (from paddlepaddle==3.3.1)
+  Downloading opt_einsum-3.3.0-py3-none-any.whl.metadata (6.5 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting networkx (from paddlepaddle==3.3.1)
+  Using cached networkx-3.7-py3-none-any.whl.metadata (6.7 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting typing-extensions (from paddlepaddle==3.3.1)
+  Using cached typing_extensions-4.16.0-py3-none-any.whl.metadata (3.3 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting safetensors>=0.6.0 (from paddlepaddle==3.3.1)
+  Using cached safetensors-0.8.0-cp310-abi3-win_amd64.whl.metadata (4.2 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting setuptools (from paddlepaddle==3.3.1)
+  Using cached setuptools-84.0.0-py3-none-any.whl.metadata (6.6 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting anyio (from httpx->paddlepaddle==3.3.1)
+  Using cached anyio-4.15.1-py3-none-any.whl.metadata (4.7 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting certifi (from httpx->paddlepaddle==3.3.1)
+  Using cached certifi-2026.7.22-py3-none-any.whl.metadata (2.5 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting httpcore==1.* (from httpx->paddlepaddle==3.3.1)
+  Using cached httpcore-1.0.9-py3-none-any.whl.metadata (21 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting idna (from httpx->paddlepaddle==3.3.1)
+  Using cached idna-3.20-py3-none-any.whl.metadata (7.2 kB)
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting h11>=0.16 (from httpcore==1.*->httpx->paddlepaddle==3.3.1)
+  Using cached h11-0.16.0-py3-none-any.whl.metadata (8.3 kB)
+Downloading paddlepaddle-3.3.1-cp313-cp313-win_amd64.whl (104.8 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 104.8/104.8 MB 42.5 MB/s  0:00:02
+Downloading opt_einsum-3.3.0-py3-none-any.whl (65 kB)
+Using cached numpy-2.5.3-cp313-cp313-win_amd64.whl (12.6 MB)
+Downloading protobuf-7.36.2-cp310-abi3-win_amd64.whl (456 kB)
+Using cached safetensors-0.8.0-cp310-abi3-win_amd64.whl (355 kB)
+Using cached httpx-0.28.1-py3-none-any.whl (73 kB)
+Using cached httpcore-1.0.9-py3-none-any.whl (78 kB)
+Using cached h11-0.16.0-py3-none-any.whl (37 kB)
+Using cached anyio-4.15.1-py3-none-any.whl (132 kB)
+Using cached idna-3.20-py3-none-any.whl (69 kB)
+Using cached typing_extensions-4.16.0-py3-none-any.whl (45 kB)
+Using cached certifi-2026.7.22-py3-none-any.whl (136 kB)
+Using cached networkx-3.7-py3-none-any.whl (2.1 MB)
+Downloading pillow-12.3.0-cp313-cp313-win_amd64.whl (7.2 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 7.2/7.2 MB 9.3 MB/s  0:00:00
+Using cached setuptools-84.0.0-py3-none-any.whl (818 kB)
+Installing collected packages: typing-extensions, setuptools, safetensors, protobuf, Pillow, numpy, networkx, idna, h11, certifi, opt-einsum, httpcore, anyio, httpx, paddlepaddle
+Successfully installed Pillow-12.3.0 anyio-4.15.1 certifi-2026.7.22 h11-0.16.0 httpcore-1.0.9 httpx-0.28.1 idna-3.20 networkx-3.7 numpy-2.5.3 opt-einsum-3.3.0 paddlepaddle-3.3.1 protobuf-7.36.2 safetensors-0.8.0 setuptools-84.0.0 typing-extensions-4.16.0
 
+E:\Adarsh\Masking_project>.venv313\Scripts\python.exe -c "import paddle, paddleocr, rfdetr, cv2, fitz; print('Imports OK', 
+paddle.__version__)"
+INFO: Could not find files for the given pattern(s).
+E:\Adarsh\Masking_project\.venv313\Lib\site-packages\paddle\utils\cpp_extension\extension_utils.py:712: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import paddle, paddleocr, rfdetr, cv2, fitz; print('Imports OK', paddle.__version__)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ModuleNotFoundError: No module named 'paddleocr'
 
-
-.venv313\Scripts\python.exe -c "import paddle, paddleocr, rfdetr, cv2, fitz; print('Imports OK', paddle.__version__)"
+E:\Adarsh\Masking_project>
