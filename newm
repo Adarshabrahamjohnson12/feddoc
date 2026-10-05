@@ -1,1 +1,5 @@
-start /wait "" "E:\Adarsh\vc_redist.x64.exe" /install /quiet /norestart
+start /wait "" "E:\Adarsh\vc_redist.x64.exe" /install /quiet /norestart 
+The system cannot find the file E:\Adarsh\vc_redist.x64.exe.
+
+E:\Adarsh\Masking_project>start /wait "" "E:\Adarsh\vc_redist.x64.exe" /install /quiet /norestart
+The system cannot find the file E:\Adarsh\vc_redist.x64.exe.
