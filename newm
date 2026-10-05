@@ -1,11 +1,23 @@
-py -3.12 -m pip install "rfdetr==1.11.0"
-py -3.12 -m pip install "paddlepaddle>=2.6.2,<3"
-py -3.12 -m pip install "paddleocr>=2.7,<3"
-py -3.12 -m pip install "PyMuPDF>=1.28.2"
-py -3.12 -m pip install "opencv-python-headless>=5.0.0"
-py -3.12 -m pip install "Pillow>=12.3.0"
-
-
-
 py -3.14 -m pip install --upgrade pip
-py -3.14 -m pip install "rfdetr==1.11.0" "paddlepaddle>=2.6.2,<3" "paddleocr>=2.7,<3" "PyMuPDF>=1.28.2" "opencv-python-headless>=5.0.0" "Pillow>=12.3.0"
+Defaulting to user installation because normal site-packages is not writeable
+Requirement already satisfied: pip in C:\Program Files\Python314\Lib\site-packages (26.1.1)
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting pip
+  Downloading pip-26.2.1-py3-none-any.whl.metadata (4.6 kB)
+Downloading pip-26.2.1-py3-none-any.whl (1.8 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.8/1.8 MB 4.3 MB/s  0:00:00
+Installing collected packages: pip
+  WARNING: The scripts pip.exe, pip3.14.exe and pip3.exe are installed in 'C:\Users\ARAVIND7_FEDSERV\AppData\Roaming\Python\Python314\Scripts' which is not on PATH.
+  Consider adding this directory to PATH or, if you prefer to suppress this warning, use --no-warn-script-location.
+Successfully installed pip-26.2.1
+
+E:\Adarsh\Masking_project>py -3.14 -m pip install "rfdetr==1.11.0" "paddlepaddle>=2.6.2,<3" "paddleocr>=2.7,<3" "PyMuPDF>=1.28.2" "opencv-python-headless>=5.0.0" "Pillow>=12.3.0"
+Defaulting to user installation because normal site-packages is not writeable
+WARNING: Cache entry deserialization failed, entry ignored
+WARNING: Cache entry deserialization failed, entry ignored
+Collecting rfdetr==1.11.0
+  Downloading rfdetr-1.11.0-py3-none-any.whl.metadata (32 kB)
+ERROR: Could not find a version that satisfies the requirement paddlepaddle<3,>=2.6.2 (from versions: none)
+ERROR: No matching distribution found for paddlepaddle<3,>=2.6.2
+
+E:\Adarsh\Masking_project>
