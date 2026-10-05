@@ -1,2 +1,4 @@
-nslookup pypi.org
-curl.exe -I https://pypi.org/simple/paddlepaddle/
+pip --version
+pip 26.2.1 from C:\Users\ARAVIND7_FEDSERV\AppData\Roaming\Python\Python314\site-packages\pip (python 3.14)
+
+E:\Adarsh\Masking_project>
