@@ -1,5 +1,7 @@
-https://paddleocr.bj.bcebos.com/PP-OCRv3/english/en_PP-OCRv3_det_infer.tar
+mkdir models\paddleocr\det
+mkdir models\paddleocr\rec
+mkdir models\paddleocr\cls
 
-https://paddleocr.bj.bcebos.com/PP-OCRv4/english/en_PP-OCRv4_rec_infer.tar
-
-https://paddleocr.bj.bcebos.com/dygraph_v2.0/ch/ch_ppocr_mobile_v2.0_cls_infer.tar
+tar -xf "%USERPROFILE%\Downloads\en_PP-OCRv3_det_infer.tar" -C "models\paddleocr\det"
+tar -xf "%USERPROFILE%\Downloads\en_PP-OCRv4_rec_infer.tar" -C "models\paddleocr\rec"
+tar -xf "%USERPROFILE%\Downloads\ch_ppocr_mobile_v2.0_cls_infer.tar" -C "models\paddleocr\cls"
