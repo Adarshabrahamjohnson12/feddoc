@@ -4,3 +4,13 @@ py -3.12 -m pip install "paddleocr>=2.7,<3"
 py -3.12 -m pip install "PyMuPDF>=1.28.2"
 py -3.12 -m pip install "opencv-python-headless>=5.0.0"
 py -3.12 -m pip install "Pillow>=12.3.0"
+
+
+
+py -3.12 -m pip install "rfdetr==1.11.0"
+No suitable Python runtime found
+Pass --list (-0) to see all detected environments on your machine
+or set environment variable PYLAUNCHER_ALLOW_INSTALL to use winget
+or open the Microsoft Store to the requested version.
+
+E:\Adarsh\Masking_project>
