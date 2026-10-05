@@ -1,1 +1,8 @@
 .venv313\Scripts\python.exe -c "import torch; import paddle; import paddleocr; import rfdetr; import cv2; import fitz; print('Imports OK')"
+INFO: Could not find files for the given pattern(s).
+E:\Adarsh\Masking_project\.venv313\Lib\site-packages\paddle\utils\cpp_extension\extension_utils.py:712: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+Imports OK
+
+E:\Adarsh\Masking_project>
