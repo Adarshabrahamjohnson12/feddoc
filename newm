@@ -1,5 +1,6 @@
-py main.py
-warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
-PaddleOCR is not installed. Install the PaddleOCR and PaddlePaddle dependencies listed in requirements.txt.
-
-E:\Adarsh\Masking_project>
+py -3.12 -m pip install "rfdetr==1.11.0"
+py -3.12 -m pip install "paddlepaddle>=2.6.2,<3"
+py -3.12 -m pip install "paddleocr>=2.7,<3"
+py -3.12 -m pip install "PyMuPDF>=1.28.2"
+py -3.12 -m pip install "opencv-python-headless>=5.0.0"
+py -3.12 -m pip install "Pillow>=12.3.0"
