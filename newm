@@ -1,2 +1,5 @@
 cd /d E:\Adarsh\Masking_project
 .venv313\Scripts\python.exe -c "import torch; print(torch.__version__)"
+
+
+.venv313\Scripts\python.exe -c "import paddle, paddleocr, rfdetr, cv2, fitz; print('Imports OK')"
