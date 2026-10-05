@@ -1,5 +1,51 @@
-.venv313\Scripts\python.exe -m pip install "paddleocr>=2.7,<3" "rfdetr==1.11.0" "PyMuPDF>=1.28.2" "opencv-python-headless>=5.0.0" "Pillow>=12.3.0"
-.venv313\Scripts\python.exe -c "import paddle, paddleocr, rfdetr, cv2, fitz, torch; print('Imports OK; PaddlePaddle', paddle.__version__)"
+Downloading shapely-2.1.2-cp313-cp313-win_amd64.whl (1.7 MB)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ 1.7/1.7 MB 5.9 MB/s  0:00:00
+Downloading termcolor-3.3.0-py3-none-any.whl (7.7 kB)
+Using cached typer-0.27.2-py3-none-any.whl (123 kB)
+Using cached annotated_doc-0.0.5-py3-none-any.whl (5.3 kB)
+Using cached rich-15.0.0-py3-none-any.whl (310 kB)
+Using cached pygments-2.21.0-py3-none-any.whl (1.3 MB)
+Using cached markdown_it_py-4.2.0-py3-none-any.whl (91 kB)
+Using cached mdurl-0.1.2-py3-none-any.whl (10.0 kB)
+Using cached shellingham-1.5.4-py2.py3-none-any.whl (9.8 kB)
+Installing collected packages: simsimd, mpmath, urllib3, typing-inspection, tifffile, termcolor, sympy, stringzilla, soupsieve, six, shellingham, shapely, scipy, regex, rapidfuzz, pyyaml, pyparsing, PyMuPDF, pygments, pyDeprecate, pydantic-core, pyclipper, packaging, opencv-python-headless, opencv-python, opencv-contrib-python, mdurl, MarkupSafe, lxml, lmdb, kiwisolver, imageio, hf-xet, fsspec, fonttools, filelock, defusedxml, cython, cycler, contourpy, colorama, click, charset_normalizer, av, annotated-types, annotated-doc, tqdm, requests, python-docx, python-dateutil, pydantic, markdown-it-py, lazy-loader, jinja2, fire, beautifulsoup4, albucore, torch, scikit-image, rich, matplotlib, huggingface-hub, albumentations, typer, torchvision, tokenizers, supervision, paddleocr, transformers, rfdetr
+Successfully installed MarkupSafe-3.0.4 PyMuPDF-1.28.2 albucore-0.0.24 albumentations-2.0.8 annotated-doc-0.0.5 annotated-types-0.8.0 av-19.0.1 beautifulsoup4-4.15.0 charset_normalizer-3.5.2 click-8.5.0 colorama-0.4.6 contourpy-1.4.0 cycler-0.12.1 cython-3.3.0 defusedxml-0.7.1 filelock-4.0.11 fire-0.7.1 fonttools-4.66.1 fsspec-2026.9.0 hf-xet-1.6.0 huggingface-hub-1.33.0 imageio-2.38.0 jinja2-3.1.6 kiwisolver-1.5.1 lazy-loader-0.6 lmdb-3.0.0 lxml-6.1.3 markdown-it-py-4.2.0 matplotlib-3.11.2 mdurl-0.1.2 mpmath-1.3.0 opencv-contrib-python-5.0.0.93 opencv-python-5.0.0.93 opencv-python-headless-5.0.0.93 packaging-26.3 paddleocr-2.10.0 pyDeprecate-0.9.0 pyclipper-1.4.0 pydantic-2.13.5 pydantic-core-2.46.5 pygments-2.21.0 pyparsing-3.3.3 python-dateutil-2.9.0.post0 python-docx-1.2.0 pyyaml-6.0.3 rapidfuzz-3.14.6 regex-2026.9.29 requests-2.34.2 rfdetr-1.11.0 rich-15.0.0 scikit-image-0.26.0 scipy-1.18.1 shapely-2.1.2 shellingham-1.5.4 simsimd-6.5.16 six-1.17.0 soupsieve-2.10 stringzilla-5.2.0 supervision-0.30.7 sympy-1.14.0 termcolor-3.3.0 tifffile-2026.9.20 tokenizers-0.23.2 torch-2.14.1 torchvision-0.29.1 tqdm-4.70.1 transformers-5.18.0 typer-0.27.2 typing-inspection-0.4.4 urllib3-2.8.0
 
+E:\Adarsh\Masking_project>.venv313\Scripts\python.exe -c "import paddle, paddleocr, rfdetr, cv2, fitz, torch; print('Imports OK; PaddlePaddle', paddle.__version__)"
+INFO: Could not find files for the given pattern(s).
+E:\Adarsh\Masking_project\.venv313\Lib\site-packages\paddle\utils\cpp_extension\extension_utils.py:712: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+    import paddle, paddleocr, rfdetr, cv2, fitz, torch; print('Imports OK; PaddlePaddle', paddle.__version__)
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\paddleocr\__init__.py", line 14, in <module>
+    from .paddleocr import (
+    ...<9 lines>...
+    )
+  File "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\paddleocr\paddleocr.py", line 64, in <module>
+    from tools.infer import predict_system
+  File "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\paddleocr\tools\infer\predict_system.py", line 33, in <module>    import tools.infer.predict_det as predict_det
+  File "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\paddleocr\tools\infer\predict_det.py", line 31, in <module>
+    from ppocr.data import create_operators, transform
+  File "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\paddleocr\ppocr\data\__init__.py", line 35, in <module>
+    from ppocr.data.imaug import transform, create_operators
+  File "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\paddleocr\ppocr\data\imaug\__init__.py", line 19, in <module>
+    from .iaa_augment import IaaAugment
+  File "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\paddleocr\ppocr\data\imaug\iaa_augment.py", line 24, in <module>
+    import albumentations as A
+  File "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\albumentations\__init__.py", line 24, in <module>
+    from .pytorch import *
+  File "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\albumentations\pytorch\__init__.py", line 1, in <module>
+    from .transforms import *
+  File "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\albumentations\pytorch\transforms.py", line 15, in <module>
+    import torch
+  File "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\torch\__init__.py", line 309, in <module>
+    _load_dll_libraries()
+    ~~~~~~~~~~~~~~~~~~~^^
+  File "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\torch\__init__.py", line 292, in _load_dll_libraries
+    raise err
+OSError: [WinError 127] The specified procedure could not be found. Error loading "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\torch\lib\shm.dll" or one of its dependencies.
 
+E:\Adarsh\Masking_project>
 .venv313\Scripts\python.exe main.py
