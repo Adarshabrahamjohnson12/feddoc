@@ -7,6 +7,5 @@ py -3.12 -m pip install "Pillow>=12.3.0"
 
 
 
-py -3.14 -m pip install --user uv
-"%APPDATA%\Python\Python314\Scripts\uv.exe" --version
-"%APPDATA%\Python\Python314\Scripts\uv.exe" python install 3.12
+py -3.14 -m pip install --upgrade pip
+py -3.14 -m pip install "rfdetr==1.11.0" "paddlepaddle>=2.6.2,<3" "paddleocr>=2.7,<3" "PyMuPDF>=1.28.2" "opencv-python-headless>=5.0.0" "Pillow>=12.3.0"
