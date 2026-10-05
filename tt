@@ -211,11 +211,30 @@ def ocr_tokens(img):
     digits = []
     for w_ in words:
         norm = w_["raw"].translate(_CONFUSABLE)
+        norm = norm.replace("_", "")
         compact = re.sub(r"[\s\-:.]", "", norm)
         if compact and sum(ch.isdigit() for ch in compact) >= 0.6 * len(compact):
             d = re.sub(r"\D", "", norm)
             if d:
                 digits.append({**w_, "digits": d, "groups": [len(d)], "src": "paddle"})
+    return words, digits
+
+
+def pdf_text_tokens(page, scale):
+    """Return positioned words from a PDF text layer as OCR-compatible tokens."""
+    words, digits = [], []
+    for item in page.get_text("words"):
+        x1, y1, x2, y2, raw = item[:5]
+        raw = str(raw).strip()
+        if not raw:
+            continue
+        box = (x1 * scale, y1 * scale, x2 * scale, y2 * scale)
+        word = {"raw": raw, "conf": 100.0, "box": box}
+        words.append(word)
+        number = re.sub(r"\D", "", raw)
+        if number:
+            digits.append({**word, "digits": number, "groups": [len(number)],
+                           "src": "pdf"})
     return words, digits
 
 
@@ -579,10 +598,14 @@ def read_card_number(img, box):
 # ------------------------------------------------------------------
 # one upright image (page or embedded-image crop)
 # ------------------------------------------------------------------
-def mask_upright(img, cov, ocr=True, tag=""):
+def mask_upright(img, cov, ocr=True, tag="", native_text=None):
     if ocr:
         # --- detect everything on the untouched image, then apply ---
         words, digit_tokens = ocr_tokens(img)
+        if native_text is not None:
+            native_words, native_digits = native_text
+            words.extend(native_words)
+            digit_tokens.extend(native_digits)
         labels = [w for w in words
                   if re.match(r"^(aadhaar|aadhar|adhaar|adhar|aadhr|uid)",
                               re.sub(r"[^a-z]", "", w["raw"].lower()))]
@@ -592,9 +615,6 @@ def mask_upright(img, cov, ocr=True, tag=""):
         for c in cands:
             if accept(c, labels) and not any(overlap(c["box"], j[0]) > 0.5 for j in jobs):
                 jobs.append((c["box"], refine_cut(img, c["box"], digit_cut_x(c)), "typed"))
-        for box, cut in find_handwritten(img, words, labels):
-            if not any(overlap(box, j[0]) > 0.5 for j in jobs):
-                jobs.append((box, cut, "handwritten"))
         for box, cut, kind in jobs:
             if not covered(cov, box) and mask_number(img, cov, box, cut):
                 STATS[kind] += 1
@@ -631,14 +651,15 @@ ROTATIONS = [(None, None),
              (cv2.ROTATE_90_COUNTERCLOCKWISE, cv2.ROTATE_90_CLOCKWISE)]
 
 
-def process(img, cov, is_region):
+def process(img, cov, is_region, native_text=None):
     """Check four orientations; only mask QR regions confirmed by decoding a payload."""
     work, wc = img.copy(), cov.copy()
     rotations = ROTATIONS if (is_region or MODEL is not None) else ROTATIONS[:1]
     for rot, inv in rotations:
         r = work if rot is None else cv2.rotate(work, rot)
         rc = wc if rot is None else cv2.rotate(wc, rot)
-        mask_upright(r, rc, ocr=(not is_region and rot is None), tag=f"rot={rot}")
+        mask_upright(r, rc, ocr=(not is_region and rot is None), tag=f"rot={rot}",
+                     native_text=native_text if rot is None and not is_region else None)
         work = r if inv is None else cv2.rotate(r, inv)
         wc = rc if inv is None else cv2.rotate(rc, inv)
     return work, wc
@@ -705,7 +726,8 @@ for input_pdf in input_pdfs:
                 img[y1:y2, x1:x2] = res
                 cov[y1:y2, x1:x2] = rcov
 
-        img, cov = process(img, cov, is_region=False)
+        native_text = pdf_text_tokens(page, RENDER_SCALE)
+        img, cov = process(img, cov, is_region=False, native_text=native_text)
 
         delta = {k: STATS[k] - before[k] for k in STATS}
         print("  masked:", delta)
