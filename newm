@@ -1,1 +1,5 @@
 .venv313\Scripts\python.exe -m pip install "paddleocr>=2.7,<3" "rfdetr==1.11.0" "PyMuPDF>=1.28.2" "opencv-python-headless>=5.0.0" "Pillow>=12.3.0"
+.venv313\Scripts\python.exe -c "import paddle, paddleocr, rfdetr, cv2, fitz, torch; print('Imports OK; PaddlePaddle', paddle.__version__)"
+
+
+.venv313\Scripts\python.exe main.py
