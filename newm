@@ -1,1 +1,4 @@
 if exist "E:\Adarsh\vc_redist.x64.exe" (start /wait "" "E:\Adarsh\vc_redist.x64.exe" /install /quiet /norestart) else (echo Installer not found at E:\Adarsh\vc_redist.x64.exe)
+Installer not found at E:\Adarsh\vc_redist.x64.exe
+
+E:\Adarsh\Masking_project>
