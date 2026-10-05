@@ -1,1 +1,31 @@
-.venv313\Scripts\python.exe main.py
+>.venv313\Scripts\python.exe main.py
+warning: The `fitz` API is deprecated and will be removed in future. Use `import pymupdf` instead.
+INFO: Could not find files for the given pattern(s).
+E:\Adarsh\Masking_project\.venv313\Lib\site-packages\paddle\utils\cpp_extension\extension_utils.py:712: UserWarning: No ccache found. Please be aware that recompiling all source files may be required. You can download and install ccache from: https://github.com/ccache/ccache/blob/master/doc/INSTALL.md
+  warnings.warn(warning_message)
+download https://paddleocr.bj.bcebos.com/PP-OCRv3/english/en_PP-OCRv3_det_infer.tar to E:\Adarsh\Masking_project\models\paddleocr\det\en_PP-OCRv3_det_infer\en_PP-OCRv3_det_infer.tar
+[2026/10/05 11:28:28] ppocr INFO: Downloading en_PP-OCRv3_det_infer.tar from https://paddleocr.bj.bcebos.com/PP-OCRv3/english/en_PP-OCRv3_det_infer.tar failed 2 times with exception HTTPSConnectionPool(host='paddleocr.bj.bcebos.com', port=443): Max retries exceeded with url: /PP-OCRv3/english/en_PP-OCRv3_det_infer.tar (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1020)')))
+[2026/10/05 11:28:30] ppocr INFO: Downloading en_PP-OCRv3_det_infer.tar from https://paddleocr.bj.bcebos.com/PP-OCRv3/english/en_PP-OCRv3_det_infer.tar failed 3 times with exception HTTPSConnectionPool(host='paddleocr.bj.bcebos.com', port=443): Max retries exceeded with url: /PP-OCRv3/english/en_PP-OCRv3_det_infer.tar (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1020)')))
+[2026/10/05 11:28:32] ppocr INFO: Downloading en_PP-OCRv3_det_infer.tar from https://paddleocr.bj.bcebos.com/PP-OCRv3/english/en_PP-OCRv3_det_infer.tar failed 4 times with exception HTTPSConnectionPool(host='paddleocr.bj.bcebos.com', port=443): Max retries exceeded with url: /PP-OCRv3/english/en_PP-OCRv3_det_infer.tar (Caused by SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] certificate verify failed: self-signed certificate in certificate chain (_ssl.c:1020)')))
+Traceback (most recent call last):
+  File "E:\Adarsh\Masking_project\main.py", line 91, in <module>
+    PADDLE_OCR = PaddleOCR(
+        use_angle_cls=True,
+    ...<5 lines>...
+        cls_model_dir=str(PADDLE_MODELS / "cls" / "ch_ppocr_mobile_v2.0_cls_infer"),
+    )
+  File "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\paddleocr\paddleocr.py", line 675, in __init__
+    maybe_download(params.det_model_dir, det_url)
+    ~~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\paddleocr\ppocr\utils\network.py", line 116, in maybe_download    download_with_progressbar(url, tmp_path)
+    ~~~~~~~~~~~~~~~~~~~~~~~~~^^^^^^^^^^^^^^^
+  File "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\paddleocr\ppocr\utils\network.py", line 43, in download_with_progressbar
+    _download(url, save_path)
+    ~~~~~~~~~^^^^^^^^^^^^^^^^
+  File "E:\Adarsh\Masking_project\.venv313\Lib\site-packages\paddleocr\ppocr\utils\network.py", line 65, in _download
+    raise RuntimeError(
+        "Download from {} failed. " "Retry limit reached".format(url)
+    )
+RuntimeError: Download from https://paddleocr.bj.bcebos.com/PP-OCRv3/english/en_PP-OCRv3_det_infer.tar failed. Retry limit reached
+
+E:\Adarsh\Masking_project>
