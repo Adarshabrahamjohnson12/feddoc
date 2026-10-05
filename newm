@@ -1,31 +1,4 @@
-dir "models\paddleocr\det\en_PP-OCRv3_det_infer\inference.pdmodel"
- Volume in drive E is New Volume
- Volume Serial Number is 220D-F7A6
-
- Directory of E:\Adarsh\Masking_project\models\paddleocr\det\en_PP-OCRv3_det_infer
-
-10/08/2022  02:57 PM         1,590,133 inference.pdmodel
-               1 File(s)      1,590,133 bytes
-               0 Dir(s)  187,214,585,856 bytes free
-
-E:\Adarsh\Masking_project>dir "models\paddleocr\rec\en_PP-OCRv4_rec_infer\inference.pdmodel"
- Volume in drive E is New Volume
- Volume Serial Number is 220D-F7A6
-
- Directory of E:\Adarsh\Masking_project\models\paddleocr\rec\en_PP-OCRv4_rec_infer
-
-06/27/2023  09:22 AM         2,517,366 inference.pdmodel
-               1 File(s)      2,517,366 bytes
-               0 Dir(s)  187,214,585,856 bytes free
-
-E:\Adarsh\Masking_project>dir "models\paddleocr\cls\ch_ppocr_mobile_v2.0_cls_infer\inference.pdmodel"
- Volume in drive E is New Volume
- Volume Serial Number is 220D-F7A6
-
- Directory of E:\Adarsh\Masking_project\models\paddleocr\cls\ch_ppocr_mobile_v2.0_cls_infer
-
-08/26/2022  12:13 PM         1,624,487 inference.pdmodel
-               1 File(s)      1,624,487 bytes
-               0 Dir(s)  187,214,585,856 bytes free
-
-E:\Adarsh\Masking_project>
+dir "models\paddleocr\det\en_PP-OCRv3_det_infer\inference.pdiparams"
+dir "models\paddleocr\rec\en_PP-OCRv4_rec_infer\inference.pdiparams"
+dir "models\paddleocr\cls\ch_ppocr_mobile_v2.0_cls_infer\inference.pdiparams"
+.venv313\Scripts\python.exe main.py
