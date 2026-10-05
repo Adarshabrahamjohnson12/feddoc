@@ -7,6 +7,6 @@ py -3.12 -m pip install "Pillow>=12.3.0"
 
 
 
-py -3.14 -m pip install uv
-uv python install 3.12
-uv venv --python 3.12 .venv
+py -3.14 -m pip install --user uv
+"%APPDATA%\Python\Python314\Scripts\uv.exe" --version
+"%APPDATA%\Python\Python314\Scripts\uv.exe" python install 3.12
