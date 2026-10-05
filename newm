@@ -1,6 +1,4 @@
-
-E:\Adarsh\Masking_project>py -0p
- -V:3.14 *        C:\Program Files\Python314\python.exe
- -V:3.13          C:\Program Files\Python313\python.exe
-
-E:\Adarsh\Masking_project>
+cd /d E:\Adarsh\Masking_project
+py -3.13 -m venv .venv313
+.venv313\Scripts\python.exe -m pip install --upgrade pip
+.venv313\Scripts\python.exe -m pip install "paddlepaddle>=2.6.2,<3"
