@@ -7,5 +7,6 @@ py -3.12 -m pip install "Pillow>=12.3.0"
 
 
 
-curl.exe -fL https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe -o python-3.12.10-amd64.exe
-start /wait "" python-3.12.10-amd64.exe
+py -3.14 -m pip install uv
+uv python install 3.12
+uv venv --python 3.12 .venv
