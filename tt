@@ -1,2 +1,9 @@
-set GITLAB_RUNNER_TLS_CERT_FILE=""
-C:\GitLab-Runner\gitlab-runner.exe register --non-interactive --url https://gitlabuat.kubes.federalbank.co.in --token glrt-0VPJZsV9fMkzlCn1AykVGW86MQpwOjIybAp0OjMKdTpoaRI.01.1b0od3hck --executor "shell" --shell "powershell"
+
+C:\Fed_new\bank-cicd-challenge>C:\GitLab-Runner\gitlab-runner.exe register --non-interactive --url https://gitlabuat.kubes.federalbank.co.in --token glrt-0VPJZsV9fMkzlCn1AykVGW86MQpwOjIybAp0OjMKdTpoaRI.01.1b0od3hck --executor "shell" --shell "powershell"
+Runtime platform                                    arch=amd64 os=windows pid=35392 revision=a470182f version=19.2.1
+Verifying runner... is valid                        correlation_id=01M51S4QRTYP0FSKGNB5ZT86YJ runner=0VPJZsV9f runner_name=DOTNETVMA21001
+Runner registered successfully. Feel free to start it, but if it's running already the config should be automatically reloaded!
+ 
+Configuration (with the authentication token) was saved in "C:\\Fed_new\\bank-cicd-challenge\\config.toml" 
+
+C:\Fed_new\bank-cicd-challenge>
