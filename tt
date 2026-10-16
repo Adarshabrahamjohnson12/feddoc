@@ -1,1 +1,1 @@
-.\gitlab-runner.exe register  --url https://gitlabuat.kubes.federalbank.co.in  --token glrt-0VPJZsV9fMkzlCn1AykVGW86MQpwOjIybAp0OjMKdTpoaRI.01.1b0od3hck
+C:\GitLab-Runner\gitlab-runner.exe register --non-interactive --tls-skip-verify --url https://gitlabuat.kubes.federalbank.co.in --token glrt-0VPJZsV9fMkzlCn1AykVGW86MQpwOjIybAp0OjMKdTpoaRI.01.1b0od3hck --executor "shell" --shell "powershell"
