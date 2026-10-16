@@ -1,1 +1,7 @@
-C:\GitLab-Runner\gitlab-runner.exe register --non-interactive --tls-skip-verify --url https://gitlabuat.kubes.federalbank.co.in --token glrt-0VPJZsV9fMkzlCn1AykVGW86MQpwOjIybAp0OjMKdTpoaRI.01.1b0od3hck --executor "shell" --shell "powershell"
+ution after SIGTERM is sent to the process (in seconds). This limits the time given for scripts to perform the cleanup before exiting [%CUSTOM_GRACEFUL_KILL_TIMEOUT%]
+   --custom-force-kill-timeout value                                                                   Force timeout for scripts execution (in seconds). Counted from the force kill call; if process will be not terminated, Runner will abandon process termination and log an error [%CUSTOM_FORCE_KILL_TIMEOUT%]
+   --step-runner-image value                                                                           [ADVANCED] Override the default step-runner image used to inject the step-runner binary into the build container [%STEP_RUNNER_IMAGE%]
+   
+FATAL: flag provided but not defined: -tls-skip-verify 
+
+C:\Fed_new\bank-cicd-challenge>
