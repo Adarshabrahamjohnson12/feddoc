@@ -1,12 +1,1 @@
-.gitlab-ci.yml
-
-
-include:
-  - project: 'aneesha3_fedserv/cicd-templates'
-    ref: master
-    file: '/templates/universal-pipeline.yml'
-
-variables:
-  APP_NAME: "bank-service"
-  APP_PORT: "8080"
-  HEALTHCHECK_ENDPOINT: "/health"
+C:\GitLab-Runner\gitlab-runner.exe unregister --all-runners
