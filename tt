@@ -14,13 +14,10 @@ shutdown_timeout = 0
   token_expires_at = 0001-01-01T00:00:00Z
   tls-ca-file = ""
   executor = "shell"
-  shell = "bash"
-  builds_dir = "/c/GitLab-Runner/builds"
-  cache_dir = "/c/GitLab-Runner/cache"
-  environment = [
-    "GIT_SSL_NO_VERIFY=true",
-    "PATH=C:\\Program Files\\Git\\bin;C:\\Windows\\system32;C:\\Windows"
-  ]
+  shell = "cmd"
+  builds_dir = "C:/GitLab-Runner/builds"
+  cache_dir = "C:/GitLab-Runner/cache"
+  environment = ["GIT_SSL_NO_VERIFY=true"]
   [runners.cache]
     MaxUploadedArchiveSize = 0
     [runners.cache.s3]
