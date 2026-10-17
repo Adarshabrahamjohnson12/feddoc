@@ -15,8 +15,8 @@ shutdown_timeout = 0
   tls-ca-file = ""
   executor = "shell"
   shell = "bash"
-  builds_dir = "/GitLab-Runner/builds"
-  cache_dir = "/GitLab-Runner/cache"
+  builds_dir = "/c/Users/aneesha3_fedserv/builds"
+  cache_dir = "/c/Users/aneesha3_fedserv/cache"
   environment = ["GIT_SSL_NO_VERIFY=true"]
   [runners.cache]
     MaxUploadedArchiveSize = 0
