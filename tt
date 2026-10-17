@@ -17,7 +17,10 @@ shutdown_timeout = 0
   shell = "cmd"
   builds_dir = "C:/GitLab-Runner/builds"
   cache_dir = "C:/GitLab-Runner/cache"
-  environment = ["GIT_SSL_NO_VERIFY=true"]
+  environment = [
+    "GIT_SSL_NO_VERIFY=true",
+    "PATH=C:\\Windows\\System32;C:\\Windows;C:\\Program Files\\Git\\cmd"
+  ]
   [runners.cache]
     MaxUploadedArchiveSize = 0
     [runners.cache.s3]
