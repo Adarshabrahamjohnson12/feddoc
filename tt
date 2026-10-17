@@ -1,25 +1,3 @@
-concurrent = 1
-check_interval = 0
-shutdown_timeout = 0
-
-[session_server]
-  session_timeout = 1800
-
-[[runners]]
-  name = "DOTNETVMA21001"
-  url = "https://gitlabuat.kubes.federalbank.co.in"
-  id = 131
-  token = "glrt-cP-FeF5ByhRFK3EgMXf8fWc6MWVrCm86MQp0OjIKdTozYRI.01.1b0qoh89v"
-  token_obtained_at = 2026-10-17T05:18:24Z
-  token_expires_at = 0001-01-01T00:00:00Z
-  tls-ca-file = ""
-  executor = "shell"
-  shell = "powershell"
-  builds_dir = "C:\\GitLab-Runner\\builds"
-  cache_dir = "C:\\GitLab-Runner\\cache"
-  environment = ["GIT_SSL_NO_VERIFY=true", "TEMP=C:\\GitLab-Runner\\temp", "TMP=C:\\GitLab-Runner\\temp"]
-  [runners.cache]
-    MaxUploadedArchiveSize = 0
-    [runners.cache.s3]
-      AssumeRoleMaxConcurrency = 0
-    [runners.cache.gcs]
+set TEMP=C:\GitLab-Runner\temp
+set TMP=C:\GitLab-Runner\temp
+.\gitlab-runner.exe run
