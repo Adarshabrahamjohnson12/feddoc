@@ -1,185 +1,28 @@
-# File: templates/universal-pipeline.yml
-# Bank's Central Reusable Multi-Language CI/CD Pipeline Template
-# Automatically detects and builds .NET (C#), Python, Node.js, Java (Maven), or Docker projects (including nested subfolders)
+concurrent = 1
+check_interval = 0
+shutdown_timeout = 0
 
-stages:
-  - validate
-  - test
-  - build
-  - deploy_uat
+[session_server]
+  session_timeout = 1800
 
-variables:
-  APP_NAME: "$CI_PROJECT_NAME"
-  APP_PORT: "8080"
-  STARTUP_CMD: ""
-  DEPLOY_PATH: "C:/UAT_Apps/$CI_PROJECT_NAME"
-
-# -------------------------------------------------------------------------
-# STAGE 1: CI VALIDATION (Auto-Detect Tech Stack & Security Contract)
-# -------------------------------------------------------------------------
-validate_project:
-  stage: validate
-  script:
-    - echo "=== [BANK CI/CD] Validating Repository Contract for $APP_NAME ==="
-    - |
-      python -c "
-      import os, sys, glob
-      stack = []
-      if glob.glob('**/*.csproj', recursive=True) or glob.glob('**/*.sln', recursive=True): stack.append('.NET (C#)')
-      if glob.glob('**/requirements.txt', recursive=True): stack.append('Python')
-      if glob.glob('**/package.json', recursive=True): stack.append('Node.js')
-      if glob.glob('**/pom.xml', recursive=True): stack.append('Java (Maven)')
-      if glob.glob('**/Dockerfile', recursive=True): stack.append('Docker')
-      if not stack:
-          print('ERROR: No supported project manifest found (.csproj, requirements.txt, package.json, pom.xml, or Dockerfile)!')
-          sys.exit(1)
-      print(f'Auto-Detected Project Stack: {stack}')
-      print('Security & Structure Validation PASSED!')
-      "
-
-# -------------------------------------------------------------------------
-# STAGE 2: AUTOMATED TESTS (Multi-Language Auto-Detection)
-# -------------------------------------------------------------------------
-run_automated_tests:
-  stage: test
-  script:
-    - echo "=== [BANK CI/CD] Running Automated Tests for $APP_NAME ==="
-    - |
-      python -c "
-      import os, subprocess, sys, glob
-      def run(cmd, cwd=None):
-          print(f'>> Executing: {cmd}' + (f' (in {cwd})' if cwd else ''))
-          sys.exit(subprocess.call(cmd, shell=True, cwd=cwd))
-
-      slns = glob.glob('**/*.sln', recursive=True)
-      csprojs = glob.glob('**/*.csproj', recursive=True)
-      reqs = glob.glob('**/requirements.txt', recursive=True)
-      pkgs = [p for p in glob.glob('**/package.json', recursive=True) if 'node_modules' not in p]
-      poms = glob.glob('**/pom.xml', recursive=True)
-
-      if slns or csprojs:
-          target = slns[0] if slns else csprojs[0]
-          print(f'Detected .NET project ({target}). Restoring & running dotnet test...')
-          run(f'dotnet test \"{target}\" --nologo')
-      elif reqs:
-          req_file = reqs[0]
-          proj_dir = os.path.dirname(req_file) or '.'
-          print(f'Detected Python project ({req_file}). Installing dependencies & running pytest...')
-          subprocess.check_call([sys.executable, '-m', 'pip', 'install', '-r', req_file])
-          rc = subprocess.call(f'{sys.executable} -m pytest -v', shell=True, cwd=proj_dir)
-          sys.exit(0 if rc in [0, 5] else rc)
-      elif pkgs:
-          pkg_dir = os.path.dirname(pkgs[0]) or '.'
-          print(f'Detected Node.js project ({pkgs[0]}). Running npm install & npm test...')
-          subprocess.check_call('npm install', shell=True, cwd=pkg_dir)
-          run('npm test --if-present', cwd=pkg_dir)
-      elif poms:
-          pom_dir = os.path.dirname(poms[0]) or '.'
-          print(f'Detected Java Maven project ({poms[0]}). Running mvn test...')
-          run('mvn test -B', cwd=pom_dir)
-      else:
-          print('No standard test runner detected, skipping language-specific tests.')
-      "
-
-# -------------------------------------------------------------------------
-# STAGE 3: BUILD ARTIFACT (Universal Packaging)
-# -------------------------------------------------------------------------
-build_artifact:
-  stage: build
-  script:
-    - echo "=== [BANK CI/CD] Building Release Artifact for $APP_NAME ($CI_COMMIT_SHORT_SHA) ==="
-    - |
-      python -c "
-      import os, shutil, subprocess, sys, glob
-      out_dir = os.path.abspath('build_output')
-      os.makedirs(out_dir, exist_ok=True)
-
-      slns = [s for s in glob.glob('**/*.sln', recursive=True) if 'build_output' not in s]
-      csprojs = [c for c in glob.glob('**/*.csproj', recursive=True) if 'build_output' not in s]
-      poms = [p for p in glob.glob('**/pom.xml', recursive=True) if 'build_output' not in s]
-      pkgs = [p for p in glob.glob('**/package.json', recursive=True) if 'node_modules' not in p and 'build_output' not in p]
-
-      if csprojs or slns:
-          target = csprojs[0] if csprojs else slns[0]
-          print(f'Publishing .NET Release Artifact ({target}) into build_output/...')
-          sys.exit(subprocess.call(f'dotnet publish \"{target}\" -c Release -o \"{out_dir}\" --nologo', shell=True))
-      elif poms:
-          pom_dir = os.path.dirname(poms[0]) or '.'
-          print(f'Packaging Java JAR via Maven ({poms[0]})...')
-          subprocess.check_call('mvn package -DskipTests -B', shell=True, cwd=pom_dir)
-      elif pkgs:
-          pkg_dir = os.path.dirname(pkgs[0]) or '.'
-          print(f'Packaging Node.js application ({pkgs[0]})...')
-          subprocess.call('npm run build --if-present', shell=True, cwd=pkg_dir)
-
-      for item in os.listdir('.'):
-          if item not in ['build_output', '.git', '__pycache__', '.pytest_cache', 'node_modules']:
-              if os.path.isfile(item):
-                  shutil.copy2(item, out_dir)
-      print('Universal artifact packaged into build_output/ directory!')
-      "
-  artifacts:
-    paths:
-      - build_output/
-    expire_in: 1 week
-
-# -------------------------------------------------------------------------
-# STAGE 4: UAT DEPLOYMENT (Controlled Deployment to Custom Folder)
-# -------------------------------------------------------------------------
-deploy_to_uat:
-  stage: deploy_uat
-  environment:
-    name: uat
-    url: http://localhost:$APP_PORT
-  script:
-    - echo "=== [BANK CI/CD] Deploying $APP_NAME to $DEPLOY_PATH ==="
-    - |
-      python -c "
-      import os, subprocess, sys, time, glob, shutil
-      port = os.environ.get('APP_PORT', '8080')
-      app_name = os.environ.get('APP_NAME', 'app')
-      custom_cmd = os.environ.get('STARTUP_CMD', '').strip()
-      
-      uat_dir = os.environ.get('DEPLOY_PATH', f'C:/UAT_Apps/{app_name}').strip().replace('\\\\', '/')
-
-      csproj = [c for c in glob.glob('**/*.csproj', recursive=True) if 'build_output' not in c]
-      if csproj and os.name == 'nt':
-          subprocess.call('taskkill /F /IM dotnet.exe', shell=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-          time.sleep(2)
-
-      if os.path.exists('build_output'):
-          print(f'Copying build artifacts to target folder: {uat_dir} ...')
-          os.makedirs(uat_dir, exist_ok=True)
-          shutil.copytree('build_output', uat_dir, dirs_exist_ok=True)
-          print(f'Successfully deployed files to {uat_dir}!')
-      else:
-          print('ERROR: build_output directory not found!')
-          sys.exit(1)
-
-      mains = [m for m in glob.glob('**/main.py', recursive=True) if 'build_output' not in m]
-      pkgs = [p for p in glob.glob('**/package.json', recursive=True) if 'node_modules' not in p and 'build_output' not in p]
-
-      if custom_cmd == 'NONE':
-          print('STARTUP_CMD set to NONE. Skipping manual process launch.')
-          cmd = ''
-      elif custom_cmd:
-          cmd = custom_cmd
-      elif csproj:
-          dll_name = os.path.splitext(os.path.basename(csproj[0]))[0] + '.dll'
-          cmd = f'dotnet \"{uat_dir}/{dll_name}\" --urls http://127.0.0.1:{port}'
-      elif mains:
-          main_dir = os.path.dirname(mains[0]) or '.'
-          cmd = f'{sys.executable} -m uvicorn main:app --app-dir \"{main_dir}\" --host 127.0.0.1 --port {port}'
-      elif pkgs:
-          pkg_dir = os.path.dirname(pkgs[0]) or '.'
-          cmd = f'npm --prefix \"{pkg_dir}\" start'
-      else:
-          cmd = ''
-
-      if cmd:
-          print(f'Starting UAT service with command: {cmd}')
-          flags = subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.DETACHED_PROCESS if os.name == 'nt' else 0
-          subprocess.Popen(cmd, shell=True, cwd=uat_dir if csproj else None, creationflags=flags, close_fds=True)
-          time.sleep(4)
-          print(f'Service started on port {port}')
-      "
+[[runners]]
+  name = "SERVER-72-RUNNER"
+  url = "https://gitlabuat.kubes.federalbank.co.in"
+  id = 131
+  token = "glrt-cP-FeF5ByhRFK3EgMXf8fWc6MWVrCm86MQp0OjIKdTozYRI.01.1b0qoh89v"
+  token_obtained_at = 2026-10-17T05:18:24Z
+  token_expires_at = 0001-01-01T00:00:00Z
+  tls-ca-file = ""
+  executor = "shell"
+  shell = "bash"
+  builds_dir = "/c/GitLab-Runner/builds"
+  cache_dir = "/c/GitLab-Runner/cache"
+  environment = [
+    "GIT_SSL_NO_VERIFY=true",
+    "PATH=C:\\Program Files\\Git\\bin;C:\\Windows\\system32;C:\\Windows"
+  ]
+  [runners.cache]
+    MaxUploadedArchiveSize = 0
+    [runners.cache.s3]
+      AssumeRoleMaxConcurrency = 0
+    [runners.cache.gcs]
