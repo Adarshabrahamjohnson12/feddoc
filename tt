@@ -1,13 +1,1 @@
-This could be achieved through an AI-powered Omnichannel Journey Intelligence Platform.
-
-1. Unified Journey State: APIs can maintain a shared, real-time record of customer service journeys across mobile, internet banking, contact centres, and branches.
-
-2. AI-Powered Context Engine: NLP and AI can understand customer interactions, summarise previous conversations, identify unresolved issues, and provide relevant context to authorised employees.
-
-3. Predictive Assistance: Machine learning can identify customers likely to abandon a process and proactively recommend assistance before they become frustrated.
-
-4. Smart Notifications: Event-driven architecture can trigger meaningful updates whenever a request changes status or requires customer action.
-
-5. Secure Identity and Consent: Strong authentication, role-based access control, encryption, and customer consent ensure that journey information is available only to authorised channels and employees.
-
-The objective is to combine AI, APIs, real-time data, and secure identity management to deliver a seamless, proactive, and personalised banking experience.
+https://huggingface.co/Xenova/all-MiniLM-L6-v2/tree/main/onnx
