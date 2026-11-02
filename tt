@@ -1,1 +1,40 @@
-https://huggingface.co/Xenova/all-MiniLM-L6-v2/tree/main/onnx
+model.onnx
+90.4 MB
+xet
+Upload folder using huggingface_hub
+over 3 years ago
+model_bnb4.onnx
+53.9 MB
+xet
+Add/update the quantized ONNX model files and README.md for Transformers.js v3 (#5)
+over 1 year ago
+model_fp16.onnx
+45.3 MB
+xet
+Add fp16 ONNX weights (#1)
+over 2 years ago
+model_int8.onnx
+23 MB
+xet
+Rename model_int8.onnx to onnx/model_int8.onnx
+over 2 years ago
+model_q4.onnx
+54.6 MB
+xet
+Add/update the quantized ONNX model files and README.md for Transformers.js v3 (#5)
+over 1 year ago
+model_q4f16.onnx
+30 MB
+xet
+Add/update the quantized ONNX model files and README.md for Transformers.js v3 (#5)
+over 1 year ago
+model_quantized.onnx
+23 MB
+xet
+Upload folder using huggingface_hub
+over 3 years ago
+model_uint8.onnx
+22.8 MB
+xet
+Add/update the quantized ONNX model files and README.md for Transformers.js v3 (#5)
+over 1 year ago
