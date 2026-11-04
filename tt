@@ -3,3 +3,6 @@ mkdir C:\Users\aneesha3_fedserv\Python3126
 tar -xf "C:\Users\aneesha3_fedserv\python-3.12.6-embed-amd64.zip" -C "C:\Users\aneesha3_fedserv\Python3126"
 
 C:\Users\aneesha3_fedserv\Python3126\python.exe --version
+
+
+E:\Adarsh16
