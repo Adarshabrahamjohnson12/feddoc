@@ -1,4 +1,20 @@
-mkdir E:\Adarsh16\Python3126
-tar -xf "C:\Users\aneesha3_fedserv\python-3.12.6-embed-amd64.zip" -C "E:\Adarsh16\Python3126"
+compare the old one and new one where ever you found changes from old one with new one keep the new one one and create a new pdf ok where ever the mismatch came the that it form the new one ok
+First study the entire two files and entire thing 
 
-E:\Adarsh16\Python3126\python.exe --version
+we need to do some thing, I uploaded the old file (Biometric_2FA_IIA.CoEAP_Application_Onboarding_Standard_SOP)
+
+and new file(Standard_Operating_Procedure_Bio2FA)
+
+we need to maintain the old file but adding the something from the new file.
+
+the something means
+1)Architecture change old to new
+2)Business Spoke change old to new
+3)Application Components change to new
+4)Development team change from old to new
+5)3.1.4 change old to new
+6)Always keep in mind that we changed our DB from MYSQL to Oracle
+7).New                                                         Old
+       DC= 2 App Server                              DC=3 Server
+         3 Engine Server
+never miss anything
